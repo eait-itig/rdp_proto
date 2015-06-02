@@ -33,7 +33,7 @@
 -include("fastpath.hrl").
 
 -export([decode_input/1, decode_output/1]).
--export([encode_output/1]).
+-export([encode_output/1, encode_input/1]).
 -export([pretty_print/1]).
 
 -define(pp(Rec),
@@ -108,7 +108,7 @@ decode_inp_events(<<Code:3, Flags:5, Rest/binary>>) ->
             <<_:4, Release:1>> = <<Flags:5>>,
             Action = if Release == 1 -> up; true -> down end,
             [#ts_inpevt_unicode{code = CodePoint, action = Action} | decode_inp_events(Rem)];
-        Other ->
+        _Other ->
             [#fp_inp_unknown{type = Code, flags = Flags}]
     end.
 
@@ -131,7 +131,7 @@ encode_update(#ts_update_orders{orders = Orders}) ->
     Inner = <<Count:16/little, OrdersBin/binary>>,
     encode_update({16#00, single, Inner});
 
-encode_update(Ub = #ts_update_bitmaps{bitmaps = Bitmaps}) ->
+encode_update(Ub = #ts_update_bitmaps{}) ->
     Inner = rdpp:encode_ts_update_bitmaps(Ub),
     encode_update({16#01, single, <<1:16/little, Inner/binary>>});
 
@@ -185,7 +185,7 @@ encode_output(Pdu = #fp_pdu{contents = [Update]}) ->
     iolist_to_binary(lists:map(fun(Fragment) ->
         encode_output(Pdu#fp_pdu{contents = Fragment})
     end, Fragments));
-encode_output(Pdu = #fp_pdu{flags = Flags, signature = Signature, contents = ContentsBin}) when is_binary(ContentsBin) ->
+encode_output(#fp_pdu{flags = Flags, signature = Signature, contents = ContentsBin}) when is_binary(ContentsBin) ->
     Encrypted = case lists:member(encrypted, Flags) of true -> 1; _ -> 0 end,
     SaltedMAC = case lists:member(salted_mac, Flags) of true -> 1; _ -> 0 end,
     LargeSize = ((byte_size(ContentsBin) + 10) >= 1 bsl 7),
@@ -205,7 +205,7 @@ encode_output(Pdu = #fp_pdu{flags = Flags, signature = Signature, contents = Con
     end,
     <<Header2/binary, ContentsBin/binary>>.
 
-encode_input(Pdu = #fp_pdu{flags = Flags, signature = Signature, contents = Contents}) when is_list(Contents) ->
+encode_input(#fp_pdu{flags = Flags, signature = Signature, contents = Contents}) when is_list(Contents) ->
     ContentsBin = lists:foldl(
         fun(Update, Bin) when is_binary(Update) ->
             <<Bin/binary, Update/binary>>;
@@ -245,7 +245,7 @@ encode_input(Pdu = #fp_pdu{flags = Flags, signature = Signature, contents = Cont
 
 decode(Binary, Decoder) ->
     maybe([
-        fun(Pdu = #fp_pdu{flags = Fl}, Bin) ->
+        fun(Pdu = #fp_pdu{}, Bin) ->
             case Bin of
                 <<Encrypted:1, SaltedMAC:1, NumEvts:4, ?ACT_FASTPATH:2, Rest/binary>> ->
                     FlagAtoms = if Encrypted == 1 -> [encrypted]; true -> [] end ++
@@ -291,7 +291,7 @@ decode(Binary, Decoder) ->
                     {continue, [Pdu, Bin, Encrypted, NumEvts, PduLength]}
             end
         end,
-        fun(Pdu, Bin, Encrypted, NumEvts, PduLength) ->
+        fun(Pdu, Bin, Encrypted, _NumEvts, PduLength) ->
             case Bin of
                 <<Data:PduLength/binary, Rem/binary>> ->
                     if not Encrypted ->
@@ -307,7 +307,7 @@ decode(Binary, Decoder) ->
         end
     ], [#fp_pdu{}, Binary]).
 
-maybe([], Args) -> error(no_return);
+maybe([], _Args) -> error(no_return);
 maybe([Fun | Rest], Args) ->
     case apply(Fun, Args) of
         {continue, NewArgs} ->

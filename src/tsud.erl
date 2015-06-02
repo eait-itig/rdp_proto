@@ -209,7 +209,7 @@ encode_svr_security(#tsud_svr_security{method=MethodAtom, level=LevelAtom, rando
 
 decode_svr_security(Bin) ->
     <<Method:32/little, Level:32/little, Rest/binary>> = Bin,
-    <<_:27, Fips:1, Meth:4>> = <<Method:32/big>>,
+    <<_:27, _Fips:1, Meth:4>> = <<Method:32/big>>,
     MethodAtom = case Meth of
         16#00 -> none;
         16#01 -> rc4_40;
@@ -247,7 +247,7 @@ zerobin_to_string(Bin) ->
 decode_net_channels(<<>>) -> [];
 decode_net_channels(Bin) ->
     <<Name:8/binary, Options:32/little, Rest/binary>> = Bin,
-    <<Init:1, EncryptRdp:1, EncryptSC:1, EncryptCS:1, HighPri:1, MedPri:1, LowPri:1, _:1, CompressRdp:1, Compress:1, ShowProtocol:1, Persistent:1, _/bitstring>> = <<Options:32/big>>,
+    <<Init:1, EncryptRdp:1, EncryptSC:1, EncryptCS:1, HighPri:1, MedPri:1, _LowPri:1, _:1, CompressRdp:1, Compress:1, ShowProtocol:1, Persistent:1, _/bitstring>> = <<Options:32/big>>,
     Pri = if HighPri == 1 -> high; MedPri == 1 -> medium; true -> low end,
     Flags = if Init == 1 -> [init]; true -> [] end ++
             if EncryptRdp == 1 -> [encrypt_rdp]; true -> [] end ++
@@ -266,7 +266,7 @@ decode_net(Data) ->
     Count = length(Chans),
     #tsud_net{channels = Chans}.
 
-encode_net(Rec) ->
+encode_net(_Rec) ->
     encode_tsud(?CS_NET, <<>>).
 
 decode_cluster(Data) ->
@@ -287,7 +287,7 @@ encode_cluster(#tsud_cluster{version = Ver, flags = Flags, sessionid = SessionId
     encode_tsud(?CS_CLUSTER, <<FlagBits:32/little, SessionIdNum:32/little>>).
 
 decode_security(Data) ->
-    <<Methods:32/little, ExtMethods:32/little>> = Data,
+    <<Methods:32/little, _ExtMethods:32/little>> = Data,
     <<_:27, Fips:1, Enc56:1, _:1, Enc128:1, Enc40:1>> = <<Methods:32/big>>,
     MethodAtoms = if Fips == 1 -> [fips]; true -> [] end ++ if Enc56 == 1 -> ['rc4_56']; true -> [] end ++ if Enc128 == 1 -> ['rc4_128']; true -> [] end ++ if Enc40 == 1 -> ['rc4_40']; true -> [] end,
     #tsud_security{methods = MethodAtoms}.
@@ -319,7 +319,7 @@ decode_monitor(Data) ->
     Count = length(Monitors),
     #tsud_monitor{monitors = Monitors}.
 
-decode_msgchannel(Data) ->
+decode_msgchannel(_Data) ->
     #tsud_msgchannel{}.
 
 decode_monitor_attrs(<<>>) -> [];
@@ -412,12 +412,12 @@ encode_core(Rec) ->
     encode_tsud(?CS_CORE, Inner).
 
 decode_core(Data) ->
-    <<Ver:32/little, Width:16/little, Height:16/little, OldDepth:16/little, SAS:16/little, KbdLayout:32/little, ClientBuild:32/little, ClientName:32/binary-unit:8, KbdType:32/little, KbdSubType:32/little, KbdFunKeys:32/little, ImeName:64/binary-unit:8, Rest/binary>> = Data,
+    <<Ver:32/little, Width:16/little, Height:16/little, OldDepth:16/little, SAS:16/little, KbdLayout:32/little, ClientBuild:32/little, ClientName:32/binary-unit:8, KbdType:32/little, KbdSubType:32/little, KbdFunKeys:32/little, _ImeName:64/binary-unit:8, Rest/binary>> = Data,
     <<Major:16/big, Minor:16/big>> = <<Ver:32/big>>,
     SoFar = #tsud_core{version = [Major, Minor], width = Width, height = Height, sas = SAS, kbd_layout = KbdLayout, client_build = ClientBuild, client_name = ClientName, kbd_type = KbdType, kbd_sub_type = KbdSubType, kbd_fun_keys = KbdFunKeys},
 
     case Rest of
-        <<_MidDepth:16/little, _ProductID:16/little, _Serial:32/little, NewDepth:16/little, SupportedDepths:16/little, CapFlags:16/little, ClientProductID:64/binary-unit:8, ConnType:8, _:8, Selected:32/little, _/binary>> ->
+        <<_MidDepth:16/little, _ProductID:16/little, _Serial:32/little, NewDepth:16/little, SupportedDepths:16/little, CapFlags:16/little, _ClientProductID:64/binary-unit:8, ConnType:8, _:8, Selected:32/little, _/binary>> ->
 
             Depth = case NewDepth of
                 16#04 -> '4bpp';

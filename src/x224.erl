@@ -134,7 +134,7 @@ encode(Record) ->
 -spec decode(Data :: binary()) -> {ok, term()} | {error, term()}.
 decode(Data) ->
     case Data of
-        <<LI:8, ?PDU_CR:4, Cdt:4, DstRef:16/big, SrcRef:16/big, Class:4, 0:2, ExtFmts:1, ExFlow:1, Rest/binary>> ->
+        <<_LI:8, ?PDU_CR:4, Cdt:4, DstRef:16/big, SrcRef:16/big, Class:4, 0:2, _ExtFmts:1, _ExFlow:1, Rest/binary>> ->
             {Cookie, RdpData} = case binary:match(Rest, <<16#0d0a:16/big>>) of
                 {Pos, _} ->
                     <<Token:Pos/binary-unit:8, 16#0d0a:16/big, Rem/binary>> = Rest,
@@ -143,14 +143,14 @@ decode(Data) ->
                     {none, Rest}
             end,
             case RdpData of
-                <<?RDP_NEGREQ:8, Flags:8, _Length:16/little, Protocols:32/little>> ->
+                <<?RDP_NEGREQ:8, _Flags:8, _Length:16/little, Protocols:32/little>> ->
                     Prots = rdpp:decode_protocol_flags(Protocols),
                     {ok, #x224_cr{src = SrcRef, dst = DstRef, class = Class, cdt = Cdt, rdp_cookie = Cookie, rdp_protocols = Prots}};
                 _ ->
                     {ok, #x224_cr{src = SrcRef, dst = DstRef, class = Class, cdt = Cdt, rdp_cookie = Cookie}}
             end;
 
-        <<LI:8, ?PDU_CC:4, Cdt:4, DstRef:16/big, SrcRef:16/big, Class:4, 0:2, ExtFmts:1, ExFlow:1, Rest/binary>> ->
+        <<_LI:8, ?PDU_CC:4, Cdt:4, DstRef:16/big, SrcRef:16/big, Class:4, 0:2, _ExtFmts:1, _ExFlow:1, Rest/binary>> ->
             case Rest of
                 <<?RDP_NEGRSP:8, Flags:8, _Length:16/little, Selected:32/little>> ->
                     <<0:4, RestrictedAdmin:1, Reserved1:1, DynVcGfx:1, ExtData:1>> = <<Flags:8>>,
@@ -181,7 +181,7 @@ decode(Data) ->
         <<LI:8, ?PDU_DT:4, 0:3, ROA:1, EOT:1, TpduNr:7, Rest/binary>> when LI == 2 ->
             {ok, #x224_dt{roa = ROA, eot = EOT, tpdunr = TpduNr, data = Rest}};
 
-        <<LI:8, ?PDU_DR:4, 0:4, DstRef:16/big, SrcRef:16/big, Reason:8, Rest/binary>> ->
+        <<_LI:8, ?PDU_DR:4, 0:4, DstRef:16/big, SrcRef:16/big, Reason:8, _Rest/binary>> ->
             Error = case Reason of
                 0 -> not_specified;
                 1 -> congestion;

@@ -160,7 +160,7 @@ decoder_mcs_generic(Pdu, McsData, Rem) ->
     case mcsgcc:decode(McsData) of
         {ok, McsPkt} ->
             {return, {ok, {mcs_pdu, McsPkt}, Rem}};
-        Err ->
+        _Err ->
             {return, {ok, {x224_pdu, Pdu}, Rem}}
     end.
 
@@ -168,7 +168,7 @@ decoder_mcs_ci(Pdu, McsData, Rem) ->
     case mcsgcc:decode_ci(McsData) of
         {ok, McsPkt} ->
             {return, {ok, {mcs_pdu, McsPkt}, Rem}};
-        Other ->
+        _Other ->
             {continue, [Pdu, McsData, Rem]}
     end.
 
@@ -176,7 +176,7 @@ decoder_mcs_cr(Pdu, McsData, Rem) ->
     case mcsgcc:decode_cr(McsData) of
         {ok, McsPkt} ->
             {return, {ok, {mcs_pdu, McsPkt}, Rem}};
-        Err ->
+        _Err ->
             {continue, [Pdu, McsData, Rem]}
     end.
 
@@ -317,10 +317,6 @@ zero_pad(Bin, Len) ->
     Rem = Len - byte_size(Bin),
     <<Bin/binary, 0:Rem/unit:8>>.
 
-zerobin_to_string(Bin) ->
-    [First|_] = binary:split(Bin, <<0>>),
-    binary_to_list(First).
-
 decode_tscaps(0, _) -> [];
 decode_tscaps(N, Bin) ->
     <<Type:16/little, Size:16/little, Rest/binary>> = Bin,
@@ -350,7 +346,7 @@ decode_tscap(16#3, Bin) ->
     #ts_cap_order{flags = sets:to_list(FlagSet), orders = sets:to_list(OrderSet)};
 
 decode_tscap(16#5, Bin) ->
-    <<Flags:16/little, RemoteDetach:16/little, Control:16/little, Detach:16/little>> = Bin,
+    <<_Flags:16/little, RemoteDetach:16/little, Control:16/little, Detach:16/little>> = Bin,
     FlagAtoms = if (RemoteDetach =/= 0) -> [{remote_detach, RemoteDetach}]; true -> [] end,
     ControlAtom = case Control of
         2 -> never;
@@ -411,16 +407,16 @@ decode_tscap(16#16, Bin) ->
     <<Supported:32/little, GdipVersion:32/little, CacheSupported:32/little, CacheEntries:10/binary, CacheChunkSizes:8/binary, ImageCacheProps:6/binary>> = Bin,
     FlagAtoms = if Supported > 0 -> [supported]; true -> [] end ++
                 if CacheSupported > 0 -> [cache]; true -> [] end,
-    {<<>>, CacheEntryPlist} = lists:foldl(fun(Atom, {Bin, Acc}) ->
-        <<Val:16/little, Rest/binary>> = Bin,
+    {<<>>, CacheEntryPlist} = lists:foldl(fun(Atom, {IBin, Acc}) ->
+        <<Val:16/little, Rest/binary>> = IBin,
         {Rest, [{Atom, Val} | Acc]}
     end, {CacheEntries, []}, [graphics,brush,pen,image,image_attr]),
-    {<<>>, CacheSizePlist} = lists:foldl(fun(Atom, {Bin, Acc}) ->
-        <<Val:16/little, Rest/binary>> = Bin,
+    {<<>>, CacheSizePlist} = lists:foldl(fun(Atom, {IBin, Acc}) ->
+        <<Val:16/little, Rest/binary>> = IBin,
         {Rest, [{Atom, Val} | Acc]}
     end, {CacheChunkSizes, []}, [graphics,brush,pen,image_attr]),
-    {<<>>, ImageCachePlist} = lists:foldl(fun(Atom, {Bin, Acc}) ->
-        <<Val:16/little, Rest/binary>> = Bin,
+    {<<>>, ImageCachePlist} = lists:foldl(fun(Atom, {IBin, Acc}) ->
+        <<Val:16/little, Rest/binary>> = IBin,
         {Rest, [{Atom, Val} | Acc]}
     end, {ImageCacheProps, []}, [size, total, max]),
     #ts_cap_gdip{flags=FlagAtoms, version = GdipVersion, cache_entries=CacheEntryPlist, cache_sizes=CacheSizePlist, image_cache=ImageCachePlist};
@@ -680,7 +676,7 @@ decode_ts_confirm(Chan, Bin) ->
 encode_ts_confirm(#ts_confirm{}) ->
     <<>>.
 
-decode_ts_deactivate(Chan, Bin) ->
+decode_ts_deactivate(Chan, _Bin) ->
     {ok, #ts_deactivate{channel = Chan}}.
 
 encode_ts_deactivate(#ts_deactivate{shareid = ShareId, sourcedesc = SourceDescIn}) ->
@@ -688,7 +684,7 @@ encode_ts_deactivate(#ts_deactivate{shareid = ShareId, sourcedesc = SourceDescIn
     Sz = byte_size(SourceDesc),
     <<ShareId:32/little, Sz:16/little, SourceDesc/binary>>.
 
-decode_ts_redir(Chan, Bin) ->
+decode_ts_redir(Chan, _Bin) ->
     {ok, #ts_redir{channel = Chan}}.
 
 encode_ts_redir(#ts_redir{sessionid = Session, username = Username, domain = Domain, password = Password, cookie = Cookie, flags = Flags, address = NetAddress, fqdn = Fqdn}) ->
@@ -832,13 +828,13 @@ encode_ts_control(#ts_control{action = ActionAtom, grantid = GrantId, controlid 
     Action = case ActionAtom of request -> 1; granted -> 2; detach -> 3; cooperate -> 4 end,
     <<Action:16/little, GrantId:16/little, ControlId:32/little>>.
 
-decode_ts_fontlist(Bin) ->
+decode_ts_fontlist(_Bin) ->
     #ts_fontlist{}.
 
 encode_ts_fontlist(#ts_fontlist{}) ->
     <<0:16, 0:16, 3:16/little, 50:16/little>>.
 
-decode_ts_fontmap(Bin) ->
+decode_ts_fontmap(_Bin) ->
     #ts_fontmap{}.
 
 encode_ts_fontmap(#ts_fontmap{}) ->
@@ -871,11 +867,11 @@ encode_ts_order_control_flags(Flags) ->
     <<ControlFlags:8>> = <<FieldZeros:2, ZeroBoundsDelta:1, Delta:1, TypeChange:1, Bounds:1, Secondary:1, Standard:1>>,
     ControlFlags.
 
-encode_secondary_ts_order(Type, Flags, ExtraFlags, Inner) ->
-    ControlFlags = encode_ts_order_control_flags([secondary | Flags]),
-    % the -13 here is for historical reasons, see the spec
-    OrderLen = byte_size(Inner) + 6 - 13,
-    <<ControlFlags:8, OrderLen:16/little, ExtraFlags:16/little, Type:8, Inner/binary>>.
+% encode_secondary_ts_order(Type, Flags, ExtraFlags, Inner) ->
+%     ControlFlags = encode_ts_order_control_flags([secondary | Flags]),
+%     % the -13 here is for historical reasons, see the spec
+%     OrderLen = byte_size(Inner) + 6 - 13,
+%     <<ControlFlags:8, OrderLen:16/little, ExtraFlags:16/little, Type:8, Inner/binary>>.
 
 encode_primary_ts_order(Type, Fields, Flags, Inner) ->
     ControlFlags = encode_ts_order_control_flags(Flags),
@@ -993,7 +989,7 @@ decode_ts_inpevt(_, _) ->
 decode_ts_inpevts(_, <<>>) -> [];
 decode_ts_inpevts(0, _) -> [];
 decode_ts_inpevts(N, Bin) ->
-    <<Time:32/little, Type:16/little, Rest/binary>> = Bin,
+    <<_Time:32/little, Type:16/little, Rest/binary>> = Bin,
     {Next, Rem} = decode_ts_inpevt(Type, Rest),
     [Next | decode_ts_inpevts(N - 1, Rem)].
 
@@ -1107,7 +1103,7 @@ decode_ts_ext_info(Bin0, SoFar0 = #ts_info{}) ->
         end,
         fun(Bin, SoFar) ->
             case Bin of
-                <<Bias:32/signed-little, NameBin:64/binary, DstEndBin:16/binary, StdBias:32/signed-little, DstNameBin:64/binary, DstStartBin:16/binary, DstBias:32/signed-little, Rest/binary>> ->
+                <<Bias:32/signed-little, NameBin:64/binary, DstEndBin:16/binary, _StdBias:32/signed-little, DstNameBin:64/binary, DstStartBin:16/binary, DstBias:32/signed-little, Rest/binary>> ->
                     DstEnd = decode_ts_date(DstEndBin),
                     DstStart = decode_ts_date(DstStartBin),
                     [Name | _] = binary:split(NameBin, <<0, 0>>),
@@ -1242,7 +1238,7 @@ encode_ts_info(#ts_info{codepage = CodePage, flags = FlagAtoms, compression = Co
 
     <<CodePage:32/little, Flags:32/little, DomainLen:16/little, UserNameLen:16/little, PasswordLen:16/little, ShellLen:16/little, WorkDirLen:16/little, Domain/binary, UserName/binary, Password/binary, Shell/binary, WorkDir/binary, ExtraInfo/binary>>.
 
-maybe([], Args) -> error(no_return);
+maybe([], _Args) -> error(no_return);
 maybe([Fun | Rest], Args) ->
     case apply(Fun, Args) of
         {continue, NewArgs} ->

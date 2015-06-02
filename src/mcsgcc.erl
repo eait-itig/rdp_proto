@@ -66,7 +66,7 @@ decode_try_methods(Bin, Methods) ->
     [Method|Rest] = Methods,
     case ?MODULE:Method(Bin) of
         {ok, Rec} -> {ok, Rec};
-        Error ->
+        _Error ->
             %lager:debug("tried: ~p, got: ~p", [Method, Error]),
             decode_try_methods(Bin, Rest)
     end.
