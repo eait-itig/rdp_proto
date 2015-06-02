@@ -4,3 +4,4 @@ ebin
 c_src/*.o
 c_src/*.d
 priv/*.so
+.eunit
