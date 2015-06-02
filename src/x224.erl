@@ -33,6 +33,9 @@
 
 -export([encode/1, decode/1, pretty_print/1]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(PDU_CR, 2#1110).
 -define(PDU_CC, 2#1101).
@@ -194,3 +197,56 @@ decode(Data) ->
         _ ->
             {error, bad_x224}
     end.
+
+-ifdef(TEST).
+
+dec_hex_string([]) -> <<>>;
+dec_hex_string([A | Rest]) when (A >= $0) and (A =< $9) ->
+    <<(A - $0):4, (dec_hex_string(Rest))/bitstring>>;
+dec_hex_string([A | Rest]) when (A >= $a) and (A =< $f) ->
+    <<(A - $a + 10):4, (dec_hex_string(Rest))/bitstring>>;
+dec_hex_string([A | Rest]) when (A == 32) or (A == 10) ->
+    dec_hex_string(Rest).
+
+spec_4_1_1_test() ->
+    Pkt = dec_hex_string("27 e0 00 00 00 00 00 43 6f 6f 6b
+        69 65 3a 20 6d 73 74 73 68 61 73 68
+        3d 65 6c 74 6f 6e 73 0d 0a
+        01 00 08 00 00 00 00 00"),
+    ?assertMatch({ok, #x224_cr{
+        src = 0, dst = 0, rdp_cookie = <<"Cookie: mstshash=eltons">>,
+        rdp_protocols = []
+        }}, decode(Pkt)).
+
+spec_4_1_2_test() ->
+    Pkt = dec_hex_string("0e d0 00 00 12 34 00
+        02 00 08 00 00 00 00 00"),
+    ?assertMatch({ok, #x224_cc{
+        src = 16#1234, dst = 0, rdp_flags = [], rdp_selected = [],
+        rdp_status = ok
+        }}, decode(Pkt)).
+
+spec_4_1_3_test() ->
+    Pkt = dec_hex_string("02 f0 80 12 34"),
+    ?assertMatch({ok, #x224_dt{data = <<16#12, 16#34>>}}, decode(Pkt)).
+
+encode_decode_test() ->
+    Pkt = #x224_cr{src = 1, dst = 2,
+        rdp_cookie = <<"foo">>, rdp_protocols = [ssl]},
+    {ok, Bin} = encode(Pkt),
+    ?assertMatch({ok, Pkt}, decode(Bin)),
+
+    Pkt2 = #x224_cc{src = 2, dst = 1,
+        rdp_status = error, rdp_error = ssl_required},
+    {ok, Bin2} = encode(Pkt2),
+    ?assertMatch({ok, Pkt2}, decode(Bin2)).
+
+decode_fail_test() ->
+    Pkt = dec_hex_string("0a f0 80 12 34"),
+    ?assertMatch({error, _}, decode(Pkt)),
+
+    Pkt2 = dec_hex_string("0e f0 ff ff 22 34 00
+        02 00 08 00 00 00 00 00"),
+    ?assertMatch({error, _}, decode(Pkt2)).
+
+-endif.

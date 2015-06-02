@@ -29,6 +29,10 @@
 
 -module(tpkt).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([encode/1, decode/1]).
 
 -spec encode(Binary :: binary()) -> {ok, binary()}.
@@ -51,3 +55,7 @@ decode(Binary) ->
         _ ->
             {error, bad_tpkt}
     end.
+
+-ifdef(TEST).
+
+-endif.

@@ -29,6 +29,10 @@
 
 -module(fastpath).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -include("rdpp.hrl").
 -include("fastpath.hrl").
 
@@ -315,3 +319,6 @@ maybe([Fun | Rest], Args) ->
         {return, Value} ->
             Value
     end.
+
+-ifdef(TEST).
+-endif.
