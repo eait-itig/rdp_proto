@@ -27,6 +27,7 @@
 %% THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %%
 -include_lib("rdp_proto/include/kbd.hrl").
+-include_lib("rdp_proto/include/mcsgcc.hrl").
 
 -define(ROP_BLACKNESS, 16#00).
 -define(ROP_SRCCOPY, 16#CC).
@@ -52,7 +53,7 @@
 
 -record(ts_cap_general, {os=[unix, native_x11], flags=[suppress_output, refresh_rect, short_bitmap_hdr, autoreconnect, long_creds, salted_mac]}).
 -record(ts_cap_bitmap, {bpp, flags=[compression, multirect, resize], width=1024, height=768}).
--record(ts_cap_share, {channel}).
+-record(ts_cap_share, {channel :: mcs_chan()}).
 -record(ts_cap_order, {flags=[negotiate, zeroboundsdeltas], orders=[dstblt,patblt,scrblt,memblt,mem3blt,lineto,savebitmap,multidstblt,multipatblt,multiscrblt,multiopaquerect,fastindex,polygonsc,polygoncb,polyline,fastglyph,ellipsesc,ellipsecb,index]}).
 -record(ts_cap_input, {flags=[mousex, scancodes, unicode], kbd_layout=?KBDL_US, kbd_type=?KBD_IBM101, kbd_sub_type=0, kbd_fun_keys=12, ime=""}).
 -record(ts_cap_surface, {flags=[setsurfacebits, streamsurfacebits, framemarker]}).
@@ -71,8 +72,10 @@
 -record(ts_cap_bitmap_codec, {codec, guid, id, properties=[]}).
 -record(ts_cap_colortable, {cache_size = 6}).
 
--record(ts_demand, {channel, shareid, sourcedesc=[], capabilities=[]}).
--record(ts_confirm, {channel, shareid, sourcedesc=[], capabilities=[]}).
+-type ts_cap() :: #ts_cap_general{} | #ts_cap_bitmap{} | #ts_cap_share{} | #ts_cap_order{} | #ts_cap_input{} | #ts_cap_surface{} | #ts_cap_font{} | #ts_cap_pointer{} | #ts_cap_vchannel{} | #ts_cap_control{} | #ts_cap_activation{} | #ts_cap_multifrag{} | #ts_cap_gdip{} | #ts_cap_bitmapcache{} | #ts_cap_brush{} | #ts_cap_large_pointer{} | #ts_cap_bitmap_codecs{} | #ts_cap_colortable{}.
+
+-record(ts_demand, {channel, shareid, sourcedesc=[], capabilities=[] :: [ts_cap()]}).
+-record(ts_confirm, {channel, shareid, sourcedesc=[], capabilities=[] :: [ts_cap()]}).
 -record(ts_deactivate, {channel, shareid, sourcedesc=[]}).
 -record(ts_redir, {channel, shareid, sessionid, username=[], domain=[], password=[], cookie=[], flags=[logon], address, fqdn}).
 

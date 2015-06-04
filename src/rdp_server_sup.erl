@@ -27,9 +27,27 @@
 %% THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %%
 
--type x224_ref() :: none | integer().
+-module(rdp_server_sup).
 
--record(x224_cr, {cdt=0, dst, src, class=0, rdp_cookie="", rdp_protocols=[ssl]}).
--record(x224_cc, {cdt=0, dst, src, class=0, rdp_status=ok, rdp_flags=[], rdp_selected=[ssl], rdp_error=none}).
--record(x224_dt, {roa=0, eot=1, tpdunr=0, data}).
--record(x224_dr, {dst, src, reason}).
+-behaviour(supervisor).
+-export([start_link/2, init/1, start_frontend/1]).
+-export([initial_listeners/1]).
+
+start_link(Port, Mod) ->
+    supervisor:start_link(?MODULE, [Port, Mod]).
+
+start_frontend(Sup) ->
+    supervisor:start_child(Sup, []).
+
+%% @private
+initial_listeners(Sup) ->
+    [start_frontend(Sup) || _ <- lists:seq(1,20)],
+    ok.
+
+init([Port, Mod]) ->
+    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {active, false}, {reuseaddr, true}]),
+    spawn_link(?MODULE, initial_listeners, [self()]),
+    Server = {undefined,
+        {rdp_server_fsm, start_link, [ListenSocket, Mod, self()]},
+        temporary, 1000, worker, [rdp_server_fsm]},
+    {ok, {{simple_one_for_one, 60, 60}, [Server]}}.

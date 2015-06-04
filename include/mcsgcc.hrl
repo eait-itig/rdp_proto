@@ -27,6 +27,12 @@
 %% THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %%
 
+-ifndef(MCSGCC_HRL).
+-define(MCSGCC_HRL, 1).
+
+-type mcs_user() :: none | integer().
+-type mcs_chan() :: none | integer().
+
 -record(mcs_ci, {data, calling=[1], called=[1], max_channels=34, max_users=2, max_tokens=0, num_priorities=1, min_throughput=0, max_height=1, max_size=65535, version=2, conf_name=""}).
 
 -record(mcs_cr, {data, called=0, max_channels=34, max_users=2, max_tokens=0, num_priorities=1, min_throughput=0, max_height=1, max_size=65535, version=2, mcs_result = 'rt-successful', node=1001, tag=1, result=success}).
@@ -41,3 +47,5 @@
 -record(mcs_data, {user, channel, priority=high, data}).
 -record(mcs_srv_data, {user, channel, priority=high, data}).
 -record(mcs_dpu, {reason='rn-user-requested'}).
+
+-endif.

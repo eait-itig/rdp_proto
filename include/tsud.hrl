@@ -49,3 +49,7 @@
 -record(tsud_multitransport, {flags = []}).
 
 -record(tsud_unknown, {type, data}).
+
+-type client_tsud() :: #tsud_core{} | #tsud_security{} | #tsud_cluster{} | #tsud_net{} | #tsud_monitor{} | #tsud_msgchannel{} | #tsud_monitor_ex{} | #tsud_multitransport{} | #tsud_unknown{}.
+-type server_tsud() :: #tsud_svr_core{} | #tsud_svr_net{} | #tsud_svr_security{} | #tsud_svr_msgchannel{} | #tsud_svr_multitransport{}.
+-type tsud() :: client_tsud() | server_tsud().
