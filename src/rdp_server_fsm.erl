@@ -318,7 +318,7 @@ mcs_attach_user({mcs_pdu, #mcs_edr{}}, Data) ->
 
 mcs_attach_user({mcs_pdu, #mcs_aur{}},
         S = #state{mcs = #mcs_state{them = Them}}) ->
-    ok = rdp_server:send(S,
+    ok = rdp_server:send({self(), S},
         #mcs_auc{user = Them, status = 'rt-successful'}),
     {next_state, mcs_chans, S};
 
@@ -340,7 +340,7 @@ mcs_chans({mcs_pdu, #mcs_cjr{user = Them, channel = Chan}},
     Remaining = Chans -- [Chan],
     S2 = S#state{waitchans = Remaining},
 
-    ok = rdp_server:send(S,
+    ok = rdp_server:send({self(), S},
         #mcs_cjc{user = Us, channel = Chan,
             status = 'rt-successful'}),
 
@@ -404,7 +404,7 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             % first up, send them the license confirmation packet
             {ok, LicData} = rdpp:encode_basic(
                 #ts_license_vc{secflags=[encrypt_license]}),
-            ok = rdp_server:send(S, #mcs_srv_data{
+            ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = LicData}),
 
             % now, work out the colour depth we're going to use
@@ -489,7 +489,7 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
                 ]
             }),
 
-            ok = rdp_server:send(S, #mcs_srv_data{
+            ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = DaPkt}),
 
             % now we proceed to the final capabilities exchange
@@ -574,7 +574,7 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
                 #ts_sharedata{
                     channel = Us, shareid = ShareId,
                     data = #ts_sync{user = Us}}),
-            ok = rdp_server:send(S, #mcs_srv_data{
+            ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = SyncData}),
             {next_state, init_finalize, S};
 
@@ -586,7 +586,7 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
                     data = #ts_control{
                         action = cooperate, controlid = Us,
                         grantid = Them}}),
-            ok = rdp_server:send(S, #mcs_srv_data{
+            ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = CoopData}),
             {next_state, init_finalize, S};
 
@@ -598,7 +598,7 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
                     data = #ts_control{
                         action = granted, controlid = Us,
                         grantid = Them}}),
-            ok = rdp_server:send(S, #mcs_srv_data{
+            ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = GrantData}),
             {next_state, init_finalize, S};
 
@@ -608,11 +608,11 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
                 #ts_sharedata{
                     channel = Us, shareid = ShareId,
                     data = #ts_fontmap{}}),
-            ok = rdp_server:send(S, #mcs_srv_data{
+            ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = FontMap}),
 
             % make sure the mouse pointer is visible
-            ok = rdp_server:send_update(S,
+            ok = rdp_server:send_update({self(), S},
                 #fp_update_mouse{mode = default}),
 
             Server = {self(), S},
@@ -648,7 +648,7 @@ running(close, From,
     {ok, Deact} = rdpp:encode_sharecontrol(
         #ts_deactivate{channel = Us, shareid = ShareId}),
 
-    Ret = rdp_server:send(S, #mcs_srv_data{
+    Ret = rdp_server:send({self(), S}, #mcs_srv_data{
         user = Us, channel = IoChan, data = Deact}),
     case From of
         undefined -> ok;
@@ -656,7 +656,7 @@ running(close, From,
     end,
     case Ret of
         ok ->
-            _ = rdp_server:send(S, #mcs_dpu{}),
+            _ = rdp_server:send({self(), S}, #mcs_dpu{}),
             timer:sleep(500),
             ssl:close(SslSock),
             {stop, normal, S};
@@ -687,7 +687,7 @@ running({send_redirect, Cookie, Hostname}, From,
                 _ -> undefined
             end,
             cookie = <<Cookie/binary, 16#0d, 16#0a>> }),
-    ok = rdp_server:send(S, #mcs_srv_data{
+    ok = rdp_server:send({self(), S}, #mcs_srv_data{
         user = Us, channel = IoChan, data = Redir}),
     timer:sleep(500),
 
@@ -858,7 +858,7 @@ handle_info({tcp_closed, Sock}, State, #state{sock = Sock} = S) ->
 handle_info({'EXIT', Backend, Reason}, _State, #state{backend = Backend, sslsock = SslSock} = S) ->
     lager:debug("frontend lost backend due to termination: ~p", [Reason]),
     lager:debug("sending dpu"),
-    _ = rdp_server:send(S, #mcs_dpu{}),
+    _ = rdp_server:send({self(), S}, #mcs_dpu{}),
     ssl:close(SslSock),
     {stop, normal, S};
 
