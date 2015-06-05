@@ -122,7 +122,7 @@ reject_cr(Reason, S = #state{sock = Sock, x224 = X224}) ->
     gen_tcp:close(Sock),
     {stop, normal, S}.
 
-accept_cr(SslOpts, S = #state{sock = Sock, x224 = X224}) ->
+accept_cr(SslOpts, S = #state{x224 = X224}) ->
     #x224_state{them = ThemRef} = X224,
 
     UsRef = 1000 + random:uniform(1000),
@@ -175,12 +175,12 @@ raw_mode({send, Packet}, _From,
     Ret = gen_tcp:send(Sock, Packet),
     {reply, Ret, raw_mode, S};
 
-raw_mode({start_tls, LastPacket}, From,
-        S = #state{sslsock = none, sock = Sock}) ->
+raw_mode({start_tls, SslOpts, LastPacket}, From,
+        S = #state{sslsock = none}) ->
     gen_fsm:reply(From, ok),
     start_tls(raw_mode, LastPacket, SslOpts, S);
 
-raw_mode({send_redirect, _, _}, From,
+raw_mode({send_redirect, _, _}, _From,
         S = #state{}) ->
     {reply, {error, raw_mode}, raw_mode, S};
 
@@ -194,7 +194,7 @@ raw_mode(close, From, S = #state{sslsock = SslSock}) ->
     timer:sleep(500),
     ssl:close(SslSock),
     gen_fsm:reply(From, ok),
-    {stop, normal, S};
+    {stop, normal, S}.
 
 raw_mode({data, Data}, S = #state{mod = Mod, modstate = MS}) ->
     case Mod:handle_raw_data(Data, {self(), S}, MS) of
@@ -680,9 +680,9 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
 %%  - back to rdp_capex, if we see something that isn't a sharedata
 %%  - termination of the session
 %%
-running({send, Packet}, From, S = #state{sslsock = SslSock}) ->
+running({send, Packet}, _From, S = #state{sslsock = SslSock}) ->
     Ret = ssl:send(SslSock, Packet),
-    {reply, Ret, S};
+    {reply, Ret, running, S};
 
 running(close, From,
         S = #state{shareid = ShareId, sslsock = SslSock,
@@ -849,8 +849,8 @@ debug_print_data(Bin) ->
 -endif.
 
 %% @private
-handle_info({tcp, Sock, Bin}, raw_mode, S = #state{}) ->
-    raw_mode({data, Bin});
+handle_info({tcp, Sock, Bin}, raw_mode, S = #state{sock = Sock}) ->
+    raw_mode({data, Bin}, S);
 handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S)
         when (State =:= initiation) or (State =:= mcs_connect) ->
     % we have to use decode_connseq here to avoid ambiguity in the asn.1 for
@@ -900,13 +900,19 @@ handle_info({tcp_closed, Sock}, State, #state{sock = Sock} = S) ->
     end,
     {stop, normal, S};
 
-handle_info({'EXIT', Backend, Reason}, _State,
-        S = #state{backend = Backend, sslsock = SslSock}) ->
-    lager:debug("frontend lost backend due to termination: ~p", [Reason]),
-    lager:debug("sending dpu"),
-    _ = rdp_server:send({self(), S}, #mcs_dpu{}),
-    ssl:close(SslSock),
-    {stop, normal, S};
+handle_info({'EXIT', Pid, Reason}, State,
+        S = #state{watchkids = WKs, sslsock = SslSock}) ->
+    case lists:member(Pid, WKs) of
+        true ->
+            lager:debug("going down due to loss of watched child ~p: ~p", [Pid, Reason]),
+            lager:debug("sending dpu"),
+            _ = rdp_server:send({self(), S}, #mcs_dpu{}),
+            ssl:close(SslSock),
+            {stop, normal, S};
+        false ->
+            lager:debug("unwatched child ~p died: ~p", [Pid, Reason]),
+            {next_state, State, S}
+    end;
 
 handle_info(_Msg, State, S) ->
     {next_state, State, S}.
@@ -916,6 +922,9 @@ handle_event(Ev, _State, #state{} = S) ->
 
 handle_sync_event(get_state, _From, State, S = #state{}) ->
     {reply, {ok, S}, State, S};
+handle_sync_event({watch_child, Pid}, _From, State,
+        S = #state{watchkids = WKs}) ->
+    {reply, ok, State, S#state{watchkids = [Pid | WKs]}};
 handle_sync_event(Ev, _From, _State, #state{} = S) ->
     {stop, {bad_event, Ev}, S}.
 

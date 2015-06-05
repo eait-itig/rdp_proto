@@ -33,7 +33,7 @@
     mod :: atom(), modstate :: term(),
     sup :: pid(),
     unused,
-    backend = none :: none | pid(),
+    watchkids = [] :: [pid()],
     sslsock = none,
     chansavail=[],
     queue=[],
