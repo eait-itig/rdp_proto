@@ -34,8 +34,7 @@
 -include("rdp_server_internal.hrl").
 
 -export([start_link/3]).
--export([accept/2, initiation/2, mcs_connect/2, mcs_attach_user/2, mcs_chans/2, rdp_clientinfo/2, rdp_capex/2, init_finalize/2, running/2, running/3]).
--export([]).%proxy/2, proxy_intercept/2, proxy_wait/2]).
+-export([accept/2, initiation/2, mcs_connect/2, mcs_attach_user/2, mcs_chans/2, rdp_clientinfo/2, rdp_capex/2, init_finalize/2, running/2, running/3, raw_mode/2, raw_mode/3]).
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
 -spec start_link(Sock :: term(), Mod :: atom(), Sup :: pid()) -> {ok, pid()}.
@@ -98,15 +97,8 @@ initiation({x224_pdu, #x224_cr{class = 0, dst = 0} = Pkt},
                     accept_cr([], S2#state{modstate = MS2});
                 {accept, SslOpts, MS2} ->
                     accept_cr(SslOpts, S2#state{modstate = MS2});
-                {accept_proxy, MS2} ->
-                    case Mod:start_proxy(Pkt, {self(), S2}, MS2) of
-                        {ok, Backend, MS3} ->
-                            {next_state, proxy_wait,
-                                S2#state{modstate = MS3,
-                                    backend = Backend}};
-                        {stop, Reason, MS3} ->
-                            {stop, Reason, S2#state{modstate = MS3}}
-                    end;
+                {accept_raw, MS2} ->
+                    {next_state, raw_mode, S2#state{modstate = MS2}};
 
                 {reject, Reason, MS2} ->
                     reject_cr(Reason, S2#state{modstate = MS2});
@@ -135,15 +127,22 @@ accept_cr(SslOpts, S = #state{sock = Sock, x224 = X224}) ->
 
     UsRef = 1000 + random:uniform(1000),
     Resp = #x224_cc{src = UsRef, dst = ThemRef,
-        rdp_selected = [ssl], rdp_flags = [extdata,restricted_admin]},
+        rdp_selected = [ssl],
+        rdp_flags = [extdata, restricted_admin]},
     {ok, RespData} = x224:encode(Resp),
     {ok, Packet} = tpkt:encode(RespData),
-    inet:setopts(Sock, [{packet, raw}]),
-    gen_tcp:send(Sock, Packet),
 
     S2 = S#state{x224 = X224#x224_state{us = UsRef}},
 
-    Ciphers = [{A,B,C}||{A,B,C}<-ssl:cipher_suites(),not (B =:= des_cbc),not (C =:= md5)],
+    start_tls(mcs_connect, Packet, SslOpts, S2).
+
+start_tls(NextState, Packet, SslOpts,
+        S = #state{sock = Sock, sslsock = none}) ->
+    ok = inet:setopts(Sock, [{packet, raw}]),
+    ok = gen_tcp:send(Sock, Packet),
+
+    Ciphers = [{A,B,C} || {A,B,C} <- ssl:cipher_suites(),
+        not (B =:= des_cbc), not (C =:= md5)],
 
     Ret = ssl:ssl_accept(Sock,
         [{ciphers, Ciphers}, {honor_cipher_order, true} | SslOpts]),
@@ -154,15 +153,55 @@ accept_cr(SslOpts, S = #state{sock = Sock, x224 = X224}) ->
             lager:info("~p: accepted tls ~p, cipher = ~p", [S#state.peer, Ver, Cipher]),
             ok = ssl:setopts(SslSock, [binary,
                 {active, true}, {nodelay, true}]),
-            {next_state, mcs_connect,
-                S2#state{sslsock = SslSock}};
+            {next_state, NextState,
+                S#state{sslsock = SslSock}};
 
         {error, closed} ->
-            {stop, normal, S2};
+            {stop, normal, S};
 
         {error, Err} ->
             lager:debug("~p: tls error: ~p, dropping connection", [S#state.peer, Err]),
-            {stop, normal, S2}
+            {stop, normal, S}
+    end.
+
+%% STATE: raw_mode
+%%
+%% In this mode we just pass through all the protocol data straight
+%% to our callback module. This is to enable proxying from an early
+%% stage in the process.
+%%
+raw_mode({send, Packet}, _From,
+        S = #state{sslsock = none, sock = Sock}) ->
+    Ret = gen_tcp:send(Sock, Packet),
+    {reply, Ret, raw_mode, S};
+
+raw_mode({start_tls, LastPacket}, From,
+        S = #state{sslsock = none, sock = Sock}) ->
+    gen_fsm:reply(From, ok),
+    start_tls(raw_mode, LastPacket, SslOpts, S);
+
+raw_mode({send_redirect, _, _}, From,
+        S = #state{}) ->
+    {reply, {error, raw_mode}, raw_mode, S};
+
+raw_mode(close, From, S = #state{sslsock = none, sock = Sock}) ->
+    gen_tcp:close(Sock),
+    gen_fsm:reply(From, ok),
+    {stop, normal, S};
+
+raw_mode(close, From, S = #state{sslsock = SslSock}) ->
+    _ = rdp_server:send({self(), S}, #mcs_dpu{}),
+    timer:sleep(500),
+    ssl:close(SslSock),
+    gen_fsm:reply(From, ok),
+    {stop, normal, S};
+
+raw_mode({data, Data}, S = #state{mod = Mod, modstate = MS}) ->
+    case Mod:handle_raw_data(Data, {self(), S}, MS) of
+        {ok, MS2} ->
+            {next_state, raw_mode, S#state{modstate = MS2}};
+        {stop, Reason, MS2} ->
+            {stop, Reason, S#state{modstate = MS2}}
     end.
 
 %% STATE: mcs_connect
@@ -641,6 +680,10 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
 %%  - back to rdp_capex, if we see something that isn't a sharedata
 %%  - termination of the session
 %%
+running({send, Packet}, From, S = #state{sslsock = SslSock}) ->
+    Ret = ssl:send(SslSock, Packet),
+    {reply, Ret, S};
+
 running(close, From,
         S = #state{shareid = ShareId, sslsock = SslSock,
             mcs = #mcs_state{us = Us, iochan = IoChan}}) ->
@@ -763,9 +806,9 @@ do_events([Event | Rest], S = #state{mod = Mod, modstate = MS}) ->
             {stop, Reason, S#state{modstate = MS2}}
     end.
 
-%%
-%% packet and misc message handling functions
-%%
+%
+% other handlers and utility functions
+%
 
 queue_remainder(Sock, Bin) when byte_size(Bin) > 0 ->
     self() ! {tcp, Sock, Bin};
@@ -806,6 +849,8 @@ debug_print_data(Bin) ->
 -endif.
 
 %% @private
+handle_info({tcp, Sock, Bin}, raw_mode, S = #state{}) ->
+    raw_mode({data, Bin});
 handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S)
         when (State =:= initiation) or (State =:= mcs_connect) ->
     % we have to use decode_connseq here to avoid ambiguity in the asn.1 for
@@ -832,14 +877,14 @@ handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S) ->
             {next_state, State, S}
     end;
 
-handle_info({ssl, SslSock, Bin}, State, #state{sslsock = SslSock} = S)
-        when (State =:= proxy) orelse (State =:= proxy_intercept) orelse (State =:= wait_proxy) ->
-    ?MODULE:State({data, Bin}, S);
+handle_info({ssl, SslSock, Bin}, raw_mode, #state{sslsock = SslSock} = S) ->
+    raw_mode({data, Bin}, S);
 
-handle_info({ssl, SslSock, Bin}, State, #state{sock = Sock, sslsock = SslSock} = S) ->
+handle_info({ssl, SslSock, Bin}, State,
+        S = #state{sock = Sock, sslsock = SslSock}) ->
     handle_info({tcp, Sock, Bin}, State, S);
 
-handle_info({ssl_closed, Sock}, State, #state{sock = Sock} = S) ->
+handle_info({ssl_closed, Sock}, State, #state{sslsock = Sock} = S) ->
     case State of
         initiation -> ok;
         mcs_connect -> ok;
@@ -855,7 +900,8 @@ handle_info({tcp_closed, Sock}, State, #state{sock = Sock} = S) ->
     end,
     {stop, normal, S};
 
-handle_info({'EXIT', Backend, Reason}, _State, #state{backend = Backend, sslsock = SslSock} = S) ->
+handle_info({'EXIT', Backend, Reason}, _State,
+        S = #state{backend = Backend, sslsock = SslSock}) ->
     lager:debug("frontend lost backend due to termination: ~p", [Reason]),
     lager:debug("sending dpu"),
     _ = rdp_server:send({self(), S}, #mcs_dpu{}),

@@ -33,7 +33,7 @@
 -include("rdp_server_internal.hrl").
 
 -export([
-    send/2, send_raw/2, send_update/2,
+    send/2, send_raw/2, send_update/2, start_tls/3,
     mcs_state/1, x224_state/1, get_tsuds/1, get_caps/1,
     get_canvas/1, get_redir_support/1, get_autologon/1,
     send_redirect/3, close/1
@@ -44,17 +44,13 @@
 
 -callback init(Peer :: {inet:ip_address(), Port :: integer()}) -> {ok, State :: term()} | {stop, Reason :: term(), State :: term()}.
 
--callback handle_connect(Cookie :: binary(), Protocols :: [atom()], State :: term()) -> {accept, NewState :: term()} | {accept, SslOptions :: [term()], NewState :: term()} | {accept_proxy, NewState :: term()} | {reject, Reason :: atom(), NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
+-callback handle_connect(Cookie :: binary(), Protocols :: [atom()], State :: term()) -> {accept, NewState :: term()} | {accept, SslOptions :: [term()], NewState :: term()} | {accept_raw, NewState :: term()} | {reject, Reason :: atom(), NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
 -callback init_ui(Server :: server(), State :: term()) -> {ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
 -callback handle_event(Event :: term(), Server :: server(), State :: term()) -> {ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
--callback start_proxy(CR :: #x224_cr{}, server(), State :: term()) -> {ok, Backend ::pid(), NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
-
--callback proxy_rewrite(TsInfo :: #ts_info{}, Server :: server(), State :: term()) -> {rewrite, NewTsInfo :: #ts_info{}, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
-
--callback proxy(Data :: binary(), Server :: server(), State :: term()) -> {noreply, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
+-callback handle_raw_data(Data :: binary(), Server :: server(), State :: term()) -> {ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
 -callback terminate(Server :: server(), State :: term()) -> ok.
 
@@ -82,6 +78,13 @@ send({Pid, #state{sslsock = Sock}}, McsPkt) ->
         Pid -> ssl:send(Sock, Packet);
         _ -> gen_fsm:sync_send_event(Pid, {send, Packet})
     end.
+
+% only for raw_mode
+-spec start_tls(server(), [term()], #x224_cc{}) -> ok.
+start_tls({Pid, #state{}}, SslOpts, CC = #x224_cc{}) ->
+    {ok, Data} = x224:encode(CC),
+    {ok, Packet} = tpkt:encode(Data),
+    gen_fsm:sync_send_event(Pid, {start_tls, SslOpts, Packet}).
 
 -spec send_update(server(), tuple()) -> ok | {error, term()}.
 send_update(S = {Pid, State = #state{sslsock = SslSock, caps = Caps}}, TsUpdate) ->
