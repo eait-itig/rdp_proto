@@ -92,7 +92,7 @@ initiation({x224_pdu, #x224_cr{class = 0, dst = 0} = Pkt},
     % that here before we call the callback module
     case lists:member(ssl, Protos) of
         true ->
-            case Mod:handle_connect(Cookie, Protos, MS) of
+            case Mod:handle_connect(Cookie, Protos, {self(), S2}, MS) of
                 {accept, MS2} ->
                     accept_cr([], S2#state{modstate = MS2});
                 {accept, SslOpts, MS2} ->
@@ -198,6 +198,14 @@ raw_mode(close, From, S = #state{sslsock = SslSock}) ->
 
 raw_mode({data, Data}, S = #state{mod = Mod, modstate = MS}) ->
     case Mod:handle_raw_data(Data, {self(), S}, MS) of
+        {ok, MS2} ->
+            {next_state, raw_mode, S#state{modstate = MS2}};
+        {stop, Reason, MS2} ->
+            {stop, Reason, S#state{modstate = MS2}}
+    end;
+
+raw_mode(Event, S = #state{mod = Mod, modstate = MS}) ->
+    case Mod:handle_event(Event, {self(), S}, MS) of
         {ok, MS2} ->
             {next_state, raw_mode, S#state{modstate = MS2}};
         {stop, Reason, MS2} ->
@@ -794,7 +802,16 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Chan}},
 
 running({x224_pdu, #x224_dr{}}, S = #state{sslsock = SslSock}) ->
     ssl:close(SslSock),
-    {stop, normal, S}.
+    {stop, normal, S};
+
+running(Event, S = #state{mod = Mod, modstate = MS}) ->
+    Server = {self(), S},
+    case Mod:handle_event(Event, Server, MS) of
+        {ok, MS2} ->
+            {next_state, running, S#state{modstate = MS2}};
+        {stop, Reason, MS2} ->
+            {stop, Reason, S#state{modstate = MS2}}
+    end.
 
 do_events([], S) -> {next_state, running, S};
 do_events([Event | Rest], S = #state{mod = Mod, modstate = MS}) ->

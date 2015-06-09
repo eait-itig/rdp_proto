@@ -44,7 +44,7 @@
 
 -callback init(Peer :: {inet:ip_address(), Port :: integer()}) -> {ok, State :: term()} | {stop, Reason :: term(), State :: term()}.
 
--callback handle_connect(Cookie :: binary(), Protocols :: [atom()], State :: term()) -> {accept, NewState :: term()} | {accept, SslOptions :: [term()], NewState :: term()} | {accept_raw, NewState :: term()} | {reject, Reason :: atom(), NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
+-callback handle_connect(Cookie :: binary(), Protocols :: [atom()], Server :: server(), State :: term()) -> {accept, NewState :: term()} | {accept, SslOptions :: [term()], NewState :: term()} | {accept_raw, NewState :: term()} | {reject, Reason :: atom(), NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
 -callback init_ui(Server :: server(), State :: term()) -> {ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
