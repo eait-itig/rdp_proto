@@ -173,28 +173,25 @@ start_tls(NextState, Packet, SslOpts,
 raw_mode({send, Packet}, _From,
         S = #state{sslsock = none, sock = Sock}) ->
     Ret = gen_tcp:send(Sock, Packet),
-    {reply, Ret, raw_mode, S};
+    {reply, Ret, raw_mode, S}.
 
-raw_mode({start_tls, SslOpts, LastPacket}, From,
+raw_mode({start_tls, SslOpts, LastPacket},
         S = #state{sslsock = none}) ->
-    gen_fsm:reply(From, ok),
     start_tls(raw_mode, LastPacket, SslOpts, S);
 
-raw_mode({send_redirect, _, _}, _From,
+raw_mode({send_redirect, _, _},
         S = #state{}) ->
     {reply, {error, raw_mode}, raw_mode, S};
 
-raw_mode(close, From, S = #state{sslsock = none, sock = Sock}) ->
+raw_mode(close, S = #state{sslsock = none, sock = Sock}) ->
     gen_tcp:close(Sock),
-    gen_fsm:reply(From, ok),
     {stop, normal, S};
 
-raw_mode(close, From, S = #state{sslsock = SslSock}) ->
+raw_mode(close, S = #state{sslsock = SslSock}) ->
     _ = rdp_server:send({self(), S}, #mcs_dpu{}),
     timer:sleep(500),
     ssl:close(SslSock),
-    gen_fsm:reply(From, ok),
-    {stop, normal, S}.
+    {stop, normal, S};
 
 raw_mode({data, Data}, S = #state{mod = Mod, modstate = MS}) ->
     case Mod:handle_raw_data(Data, {self(), S}, MS) of
@@ -690,9 +687,9 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
 %%
 running({send, Packet}, _From, S = #state{sslsock = SslSock}) ->
     Ret = ssl:send(SslSock, Packet),
-    {reply, Ret, running, S};
+    {reply, Ret, running, S}.
 
-running(close, From,
+running(close,
         S = #state{shareid = ShareId, sslsock = SslSock,
             mcs = #mcs_state{us = Us, iochan = IoChan}}) ->
     lager:debug("sending deactivate and close"),
@@ -701,10 +698,6 @@ running(close, From,
 
     Ret = rdp_server:send({self(), S}, #mcs_srv_data{
         user = Us, channel = IoChan, data = Deact}),
-    case From of
-        undefined -> ok;
-        _ -> gen_fsm:reply(From, ok)
-    end,
     case Ret of
         ok ->
             _ = rdp_server:send({self(), S}, #mcs_dpu{}),
@@ -719,7 +712,7 @@ running(close, From,
     end;
 
 
-running({send_redirect, Cookie, Hostname}, From,
+running({send_redirect, Cookie, Hostname},
         S = #state{shareid = ShareId, caps = Caps,
             mcs = #mcs_state{us = Us, iochan = IoChan}}) ->
     GeneralCap = lists:keyfind(ts_cap_general, 1, Caps),
@@ -742,7 +735,7 @@ running({send_redirect, Cookie, Hostname}, From,
         user = Us, channel = IoChan, data = Redir}),
     timer:sleep(500),
 
-    running(close, From, S).
+    running(close, S);
 
 running({fp_pdu, #fp_pdu{contents = Evts}}, S = #state{}) ->
     do_events(Evts, S);
@@ -757,7 +750,7 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
 
         {ok, #ts_sharedata{shareid = ShareId, data =
                 #ts_shutdown{}}} ->
-            running(close, undefined, S);
+            running(close, S);
 
         {ok, #ts_sharedata{}} ->
             {next_state, running, S};
@@ -934,14 +927,14 @@ handle_info({'EXIT', Pid, Reason}, State,
 handle_info(_Msg, State, S) ->
     {next_state, State, S}.
 
+handle_event({watch_child, Pid}, State,
+        S = #state{watchkids = WKs}) ->
+    {next_state, State, S#state{watchkids = [Pid | WKs]}};
 handle_event(Ev, _State, #state{} = S) ->
     {stop, {bad_event, Ev}, S}.
 
 handle_sync_event(get_state, _From, State, S = #state{}) ->
     {reply, {ok, S}, State, S};
-handle_sync_event({watch_child, Pid}, _From, State,
-        S = #state{watchkids = WKs}) ->
-    {reply, ok, State, S#state{watchkids = [Pid | WKs]}};
 handle_sync_event(Ev, _From, _State, #state{} = S) ->
     {stop, {bad_event, Ev}, S}.
 

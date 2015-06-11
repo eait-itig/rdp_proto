@@ -84,7 +84,7 @@ send({Pid, #state{sslsock = Sock}}, McsPkt) ->
 start_tls({Pid, #state{}}, SslOpts, CC = #x224_cc{}) ->
     {ok, Data} = x224:encode(CC),
     {ok, Packet} = tpkt:encode(Data),
-    gen_fsm:sync_send_event(Pid, {start_tls, SslOpts, Packet}).
+    gen_fsm:send_event(Pid, {start_tls, SslOpts, Packet}).
 
 -spec send_update(server(), tuple()) -> ok | {error, term()}.
 send_update(S = {Pid, State = #state{sslsock = SslSock, caps = Caps}}, TsUpdate) ->
@@ -145,12 +145,12 @@ get_autologon(Srv) ->
 
 -spec send_redirect(server(), Cookie :: binary(), Hostname :: binary()) -> ok | {error, term()}.
 send_redirect({Pid, _}, Cookie, Hostname) ->
-    gen_fsm:sync_send_event(Pid, {send_redirect, Cookie, Hostname}).
+    gen_fsm:send_event(Pid, {send_redirect, Cookie, Hostname}).
 
 -spec watch_child(server(), pid()) -> ok.
 watch_child({Pid, _}, Kid) ->
-    gen_fsm:sync_send_all_state_event(Pid, {watch_child, Kid}).
+    gen_fsm:send_all_state_event(Pid, {watch_child, Kid}).
 
 -spec close(server()) -> ok.
 close({Pid, _}) ->
-    gen_fsm:sync_send_event(Pid, close).
+    gen_fsm:send_event(Pid, close).
