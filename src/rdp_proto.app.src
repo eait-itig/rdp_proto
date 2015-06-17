@@ -10,6 +10,7 @@
                   stdlib,
                   ssl,
                   lager,
+                  crypto,
                   asn1
                  ]},
   {mod, { rdp_proto_app, []}},

@@ -58,7 +58,7 @@ accept(timeout, S = #state{mod = Mod, sup = Sup, lsock = LSock}) ->
 
     Peer = case inet:peername(Sock) of
         {ok, P} -> P;
-        _ -> unknown
+        _ -> undefined
     end,
     case Mod:init(Peer) of
         {ok, ModState} ->
@@ -587,7 +587,7 @@ rdp_capex({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
         Wat ->
             % uhhh
             case rdpp:decode_ts_confirm(1, Pdu#mcs_data.data) of
-                #ts_confirm{shareid = ShareId, capabilities = Caps} ->
+                {ok, #ts_confirm{shareid = ShareId, capabilities = Caps}} ->
                     {next_state, init_finalize, S#state{caps = Caps}};
                 Wat2 ->
                     lager:error("~p WAT: ~p => ~p then ~p", [S#state.peer, Pdu#mcs_data.data, Wat, Wat2]),
@@ -949,8 +949,8 @@ terminate(Reason, State, S = #state{peer = P, mod = Mod, modstate = MS}) ->
 
 %% @private
 % default handler
-code_change(_OldVsn, State, _Data, _Extra) ->
-    {ok, State}.
+code_change(_OldVsn, State, Data, _Extra) ->
+    {ok, State, Data}.
 
 maybe([], _Args) -> error(no_return);
 maybe([Fun | Rest], Args) ->
