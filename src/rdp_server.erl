@@ -64,9 +64,11 @@ get_tsuds({_, #state{tsuds = Ts}}) -> Ts.
 get_caps({_, #state{caps = Cs}}) -> Cs.
 
 -spec send_raw(server(), binary()) -> ok | {error, term()}.
-send_raw({_Pid, #state{sslsock = none, sock = Sock}}, Bin) ->
+send_raw(Srv, Bin) ->
+    send_raw2(curstate(Srv), Bin).
+send_raw2({_Pid, #state{sslsock = none, sock = Sock}}, Bin) ->
     gen_tcp:send(Sock, Bin);
-send_raw({_Pid, #state{sslsock = Sock}}, Bin) ->
+send_raw2({_Pid, #state{sslsock = Sock}}, Bin) ->
     ssl:send(Sock, Bin).
 
 -spec send(server(), tuple()) -> ok | {error, term()}.
