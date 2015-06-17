@@ -39,7 +39,8 @@
 
 -record(x224_state, {
     us = none :: x224_ref(),
-    them = none :: x224_ref()
+    them = none :: x224_ref(),
+    cr = none :: #x224_cr{}
     }).
 
 -record(mcs_state, {

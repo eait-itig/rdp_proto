@@ -83,7 +83,7 @@ initiation({x224_pdu, #x224_cr{class = 0, dst = 0} = Pkt},
     #x224_cr{src = ThemRef, rdp_cookie = Cookie,
         rdp_protocols = Protos} = Pkt,
 
-    NewX224 = X224#x224_state{them = ThemRef},
+    NewX224 = X224#x224_state{them = ThemRef, cr = Pkt},
     % record the requested protocol flags in 'askedfor' -- we need
     % to supply these again later in the MCS connect phase
     S2 = S#state{x224 = NewX224, askedfor=Protos},
