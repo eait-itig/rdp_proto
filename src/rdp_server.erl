@@ -55,13 +55,13 @@
 -callback terminate(Server :: server(), State :: term()) -> ok.
 
 -spec x224_state(server()) -> #x224_state{}.
-x224_state(#state{x224 = S}) -> S.
+x224_state({_, #state{x224 = S}}) -> S.
 -spec mcs_state(server()) -> #mcs_state{}.
-mcs_state(#state{mcs = S}) -> S.
+mcs_state({_, #state{mcs = S}}) -> S.
 -spec get_tsuds(server()) -> [client_tsud()].
-get_tsuds(#state{tsuds = Ts}) -> Ts.
+get_tsuds({_, #state{tsuds = Ts}}) -> Ts.
 -spec get_caps(server()) -> [ts_cap()].
-get_caps(#state{caps = Cs}) -> Cs.
+get_caps({_, #state{caps = Cs}}) -> Cs.
 
 -spec send_raw(server(), binary()) -> ok | {error, term()}.
 send_raw({_Pid, #state{sslsock = none, sock = Sock}}, Bin) ->
