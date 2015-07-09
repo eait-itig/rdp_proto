@@ -154,13 +154,21 @@ decode_ci(Bin) ->
             CDData = list_to_binary(CI#'Connect-Initial'.userData),
             case gccp_per:decode('ConnectData', CDData) of
                 {ok, CD, CDRem} ->
+                    % Ok, so this is one of the greatest bugs in this whole sorry affair:
+                    % The asn.1 generator in the official microsoft RDP client regularly
+                    % generates the wrong length on the GCC ConnectData, but appends the full
+                    % payload anyway. If this happens, you have to strip it off here and append
+                    % it to the inner payload and *then* try to parse it again.
                     if byte_size(CDRem) > 0 ->
                         lager:warning("ci connectdata is carrying ~B extra bytes", [byte_size(CDRem)]);
                     true -> ok end,
+
                     CPDUData = list_to_binary(CD#'ConnectData'.connectPDU),
+                    % Note we append the CDRem (if any) to the CPDUData here, see above
                     case gccp_per:decode('ConnectGCCPDU', <<CPDUData/binary, CDRem/binary>>) of
                         {ok, {conferenceCreateRequest, CCR}, <<>>} ->
                             NameRec = CCR#'ConferenceCreateRequest'.conferenceName,
+                            % Duca is a magic string
                             [#'UserData_SETOF'{key={h221NonStandard, "Duca"}, value=ClientData}] = CCR#'ConferenceCreateRequest'.userData,
                             {ok, Initial#mcs_ci{conf_name = NameRec#'ConferenceName'.numeric, data = list_to_binary(ClientData)}};
                         Other ->
@@ -192,18 +200,21 @@ decode_cr(Bin) ->
             CDData = list_to_binary(CR#'Connect-Response'.userData),
             case gccp_per:decode('ConnectData', CDData) of
                 {ok, CD, CDRem} ->
+                    % See above, Microsoft's ASN.1 generator can produce the wrong length here
                     if byte_size(CDRem) > 0 ->
                         lager:warning("cr connectdata is carrying ~B extra bytes", [byte_size(CDRem)]);
                     true -> ok end,
+
                     CPDUData = list_to_binary(CD#'ConnectData'.connectPDU),
+                    % Note appending the CDRem here again
                     case gccp_per:decode('ConnectGCCPDU', <<CPDUData/binary,CDRem/binary>>) of
                         {ok, {conferenceCreateResponse, CCR}, <<>>} ->
                             Node = CCR#'ConferenceCreateResponse'.nodeID,
                             Tag = CCR#'ConferenceCreateResponse'.tag,
                             Result = CCR#'ConferenceCreateResponse'.result,
+                            % McDn is the magic string for a Connect-Response
                             [#'UserData_SETOF'{key={h221NonStandard, "McDn"}, value=ClientData}] = CCR#'ConferenceCreateResponse'.userData,
                             CDataBin = list_to_binary(ClientData),
-                            %Data = <<CDataBin/binary, CDRem/binary>>,
                             {ok, Initial#mcs_cr{node = Node, tag = Tag, result = Result, data = CDataBin}};
                         Other ->
                             Other
