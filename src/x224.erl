@@ -156,10 +156,10 @@ decode(Data) ->
         <<_LI:8, ?PDU_CC:4, Cdt:4, DstRef:16/big, SrcRef:16/big, Class:4, 0:2, _ExtFmts:1, _ExFlow:1, Rest/binary>> ->
             case Rest of
                 <<?RDP_NEGRSP:8, Flags:8, _Length:16/little, Selected:32/little>> ->
-                    <<0:4, RestrictedAdmin:1, Reserved1:1, DynVcGfx:1, ExtData:1>> = <<Flags:8>>,
+                    <<0:3, _Unused:1, RestrictedAdmin:1, NegRsp:1, DynVcGfx:1, ExtData:1>> = <<Flags:8>>,
                     Flags2 = if DynVcGfx == 1 -> [dynvc_gfx]; true -> [] end ++
                              if ExtData == 1 -> [extdata]; true -> [] end ++
-                             if Reserved1 == 1 -> [reserved1]; true -> [] end ++
+                             if NegRsp == 1 -> [negrsp]; true -> [] end ++
                              if RestrictedAdmin == 1 -> [restricted_admin]; true -> [] end,
 
                     Prots = rdpp:decode_protocol_flags(Selected),
