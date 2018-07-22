@@ -712,24 +712,15 @@ running(close,
     end;
 
 
-running({send_redirect, Cookie, Hostname},
-        S = #state{shareid = ShareId, caps = Caps,
+running({send_redirect, Cookie, _Hostname},
+        S = #state{shareid = ShareId,
             mcs = #mcs_state{us = Us, iochan = IoChan}}) ->
-    GeneralCap = lists:keyfind(ts_cap_general, 1, Caps),
     {ok, Redir} = rdpp:encode_sharecontrol(
         #ts_redir{
             channel = Us,
             shareid = ShareId,
             sessionid = crypto:rand_uniform(0,1 bsl 16),
             flags = [],
-            % always send the address if it's the official OSX client
-            % (it won't actually redir if we don't, even though this
-            % is invalid by the spec)
-            address = case GeneralCap#ts_cap_general.os of
-                [osx,_] -> unicode:characters_to_binary(
-                    <<Hostname/binary,0>>, latin1, {utf16, little});
-                _ -> undefined
-            end,
             cookie = <<Cookie/binary, 16#0d, 16#0a>> }),
     ok = rdp_server:send({self(), S}, #mcs_srv_data{
         user = Us, channel = IoChan, data = Redir}),
