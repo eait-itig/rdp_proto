@@ -1087,7 +1087,8 @@ decode_ts_ext_info(Bin0, SoFar0 = #ts_info{}) ->
                             {ok, IP} = inet:parse_ipv6_address(binary_to_list(AddrString)),
                             {continue, [Rest, SoFar#ts_info{client_address = IP}]};
                         _ ->
-                            {return, {error, {bad_client_af, Af}}}
+                            lager:warning("unhandled client address family: ~p (length ~p)", [Af, Len]),
+                            {continue, [Rest, SoFar]}
                     end;
                 _ ->
                     {return, {ok, SoFar}}
