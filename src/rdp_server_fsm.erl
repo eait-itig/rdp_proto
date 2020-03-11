@@ -150,7 +150,9 @@ start_tls(NextState, Packet, SslOpts,
     case Ret of
         {ok, SslSock} ->
             {ok, Info} = ssl:connection_information(SslSock),
-            lager:info("~p: accepted tls ~p", [S#state.peer, Info]),
+            Proto = proplists:get_value(protocol, Info),
+            Cipher = proplists:get_value(selected_cipher_suite, Info),
+            lager:info("~p: accepted tls ~p (cipher = ~p)", [S#state.peer, Proto, Cipher]),
             ok = ssl:setopts(SslSock, [binary,
                 {active, true}, {nodelay, true}]),
             {next_state, NextState,
