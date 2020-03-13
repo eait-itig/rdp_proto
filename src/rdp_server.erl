@@ -36,7 +36,7 @@
     send/2, send_raw/2, send_update/2, start_tls/3,
     mcs_state/1, x224_state/1, get_tsuds/1, get_caps/1,
     get_canvas/1, get_redir_support/1, get_autologon/1,
-    send_redirect/3, close/1, watch_child/2
+    send_redirect/3, close/1, watch_child/2, get_peer/1
     ]).
 
 -opaque server() :: {pid(), #state{}}.
@@ -111,6 +111,13 @@ curstate({Pid, State0}) ->
             {ok, State1} = gen_fsm:sync_send_all_state_event(Pid, get_state),
             State1
     end.
+
+-spec get_peer(server()) -> inet:ip_address().
+get_peer(Srv) ->
+    #state{peer = Peer} = curstate(Srv),
+    Peer.
+
+
 
 -spec get_canvas(server()) -> {Width :: integer(), Height :: integer(), Bpp :: integer()}.
 get_canvas(Srv) ->
