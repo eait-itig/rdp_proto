@@ -851,6 +851,11 @@ debug_print_data(Bin) ->
     end.
 -endif.
 
+rand_tmpname() ->
+    filename:join(["/tmp", binary:replace(
+        base64:encode(crypto:strong_rand_bytes(6)),
+        [<<"/">>], <<"_">>)]).
+
 %% @private
 handle_info({tcp, Sock, Bin}, raw_mode, S = #state{sock = Sock}) ->
     raw_mode({data, Bin}, S);
@@ -863,7 +868,7 @@ handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S)
             queue_remainder(Sock, Rem),
             ?MODULE:State(Evt, S);
         {error, Reason} ->
-            Name = filename:join(["/tmp", base64:encode(crypto:rand_bytes(6))]),
+            Name = rand_tmpname(),
             file:write_file(Name, Bin),
             lager:warning("~p connseq decode fail in ~p: ~p (data saved in ~p)", [S#state.peer, State, Reason, Name]),
             {next_state, State, S}
@@ -874,7 +879,7 @@ handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S) ->
             queue_remainder(Sock, Rem),
             ?MODULE:State(Evt, S);
         {error, Reason} ->
-            Name = filename:join(["/tmp", base64:encode(crypto:rand_bytes(6))]),
+            Name = rand_tmpname(),
             file:write_file(Name, Bin),
             lager:warning("~p decode fail in ~p: ~p (data saved in ~p)", [S#state.peer, State, Reason, Name]),
             {next_state, State, S}
