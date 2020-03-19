@@ -266,8 +266,28 @@ decode_net(Data) ->
     Count = length(Chans),
     #tsud_net{channels = Chans}.
 
-encode_net(_Rec) ->
-    encode_tsud(?CS_NET, <<>>).
+encode_net_channel(#tsud_net_channel{name = Name, priority = Pri, flags = Flags}) ->
+    NameBin = zero_pad(iolist_to_binary([Name]), 8),
+    Init = case lists:member(init, Flags) of true -> 1; _ -> 0 end,
+    EncryptRdp = case lists:member(encrypt_rdp, Flags) of true -> 1; _ -> 0 end,
+    EncryptSC = case lists:member(encrypt_sc, Flags) of true -> 1; _ -> 0 end,
+    EncryptCS = case lists:member(encrypt_cs, Flags) of true -> 1; _ -> 0 end,
+    CompressRdp = case lists:member(compress_rdp, Flags) of true -> 1; _ -> 0 end,
+    Compress = case lists:member(compress, Flags) of true -> 1; _ -> 0 end,
+    ShowProtocol = case lists:member(show_protocol, Flags) of true -> 1; _ -> 0 end,
+    Persistent = case lists:member(persistent, Flags) of true -> 1; _ -> 0 end,
+    {HighPri, MedPri, LowPri} = case Pri of
+        high -> {1, 0, 0};
+        medium -> {0, 1, 0};
+        low -> {0, 0, 1}
+    end,
+    <<Options:32/big>> = <<Init:1, EncryptRdp:1, EncryptSC:1, EncryptCS:1, HighPri:1, MedPri:1, LowPri:1, 0:1, CompressRdp:1, Compress:1, ShowProtocol:1, Persistent:1, 0:20>>,
+    <<NameBin/binary, Options:32/little>>.
+
+encode_net(#tsud_net{channels = Chans}) ->
+    Count = length(Chans),
+    Bins = [<<Count:32/little>>, [encode_net_channel(Chan) || Chan <- Chans]],
+    encode_tsud(?CS_NET, iolist_to_binary(Bins)).
 
 decode_cluster(Data) ->
     <<Flags:32/little, SessionId:32/little, _OldTail/binary>> = Data,
@@ -363,7 +383,7 @@ encode_svr_multitransport(#tsud_svr_multitransport{flags = Flags}) ->
     encode_tsud(?SC_MULTITRANSPORT, <<FlagField:32/little>>).
 
 encode_core(Rec) ->
-    #tsud_core{version=[Major, Minor], width=Width, height=Height, sas=SAS, kbd_layout=KbdLayout, client_build=ClientBuild, client_name=ClientName, kbd_type=KbdType, kbd_sub_type=KbdSubType, kbd_fun_keys=KbdFunKeys, color=Color, colors=Colors, capabilities=Caps, selected=Selected, conn_type=ConnType} = Rec,
+    #tsud_core{version=[Major, Minor], width=Width, height=Height, sas=SAS, kbd_layout=KbdLayout, client_build=ClientBuild, client_name=ClientName, kbd_type=KbdType, kbd_sub_type=KbdSubType, kbd_fun_keys=KbdFunKeys, color=Color, colors=Colors, capabilities=Caps, selected=Selected, conn_type=ConnType, prodid=ProdId} = Rec,
 
     <<Ver:32/big>> = <<Major:16/big, Minor:16/big>>,
     Depth = case Color of
@@ -372,6 +392,7 @@ encode_core(Rec) ->
         '15bpp' -> 16#0f;
         '16bpp' -> 16#10;
         '24bpp' -> 16#18;
+        '32bpp' -> 16#18;
         _ -> 0
     end,
 
@@ -400,13 +421,20 @@ encode_core(Rec) ->
     MonitorLayout = case lists:member(monitor_layout, Caps) of true -> 1; _ -> 0 end,
     StrongKeys = case lists:member(strongkeys, Caps) of true -> 1; _ -> 0 end,
     StatusInfo = case lists:member(statusinfo, Caps) of true -> 1; _ -> 0 end,
-    Want32 = case lists:member(want_32bpp, Caps) of true -> 1; _ -> 0 end,
+    Want32 = case lists:member(want_32bpp, Caps) of
+        true -> 1;
+        _ -> case Color of
+            '32bpp' -> 1;
+            _ -> 0
+        end
+    end,
     ErrInfo = case lists:member(errinfo, Caps) of true -> 1; _ -> 0 end,
-    <<CapFlags:16/big>> = <<0:6, DynamicDST:1, DynVCGFX:1, NetCharAuto:1, MonitorLayout:1, ConnTypeValid:1, 0:1, StrongKeys:1, StatusInfo:1, Want32:1, ErrInfo:1>>,
+    Heartbeat = case lists:member(heartbeat, Caps) of true -> 1; _ -> 0 end,
+    <<CapFlags:16/big>> = <<0:5, Heartbeat:1, DynamicDST:1, DynVCGFX:1, NetCharAuto:1, MonitorLayout:1, ConnTypeValid:1, 0:1, StrongKeys:1, StatusInfo:1, Want32:1, ErrInfo:1>>,
 
     ClientNamePad = zero_pad(ClientName, 32),
     ImeName = <<0:64/unit:8>>,
-    ClientProductId = zero_pad(<<"1">>, 64),
+    ClientProductId = zero_pad(ProdId, 64),
 
     Inner = <<Ver:32/little, Width:16/little, Height:16/little, 0:16, SAS:16/little, KbdLayout:32/little, ClientBuild:32/little, ClientNamePad:32/binary-unit:8, KbdType:32/little, KbdSubType:32/little, KbdFunKeys:32/little, ImeName:64/binary-unit:8, 0:16, 0:16, 0:32, Depth:16/little, Supported:16/little, CapFlags:16/little, ClientProductId:64/binary-unit:8, ConnTyp:8, 0:8, Prots:32/little>>,
     encode_tsud(?CS_CORE, Inner).
@@ -417,7 +445,7 @@ decode_core(Data) ->
     SoFar = #tsud_core{version = [Major, Minor], width = Width, height = Height, sas = SAS, kbd_layout = KbdLayout, client_build = ClientBuild, client_name = ClientName, kbd_type = KbdType, kbd_sub_type = KbdSubType, kbd_fun_keys = KbdFunKeys},
 
     case Rest of
-        <<_MidDepth:16/little, _ProductID:16/little, _Serial:32/little, NewDepth:16/little, SupportedDepths:16/little, CapFlags:16/little, _ClientProductID:64/binary-unit:8, ConnType:8, _:8, Selected:32/little, _/binary>> ->
+        <<_MidDepth:16/little, _ProductID:16/little, _Serial:32/little, NewDepth:16/little, SupportedDepths:16/little, CapFlags:16/little, ClientProductID:64/binary-unit:8, ConnType:8, _:8, Selected:32/little, _/binary>> ->
 
             Depth = case NewDepth of
                 16#04 -> '4bpp';
@@ -433,7 +461,7 @@ decode_core(Data) ->
 
             Prots = rdpp:decode_protocol_flags(Selected),
 
-            <<_:6, DynamicDST:1, DynVCGFX:1, NetCharAuto:1, MonitorLayout:1, ConnTypeValid:1, _:1, StrongKeys:1, StatusInfo:1, Want32:1, ErrInfo:1>> = <<CapFlags:16/big>>,
+            <<_:5, Heartbeat:1, DynamicDST:1, DynVCGFX:1, NetCharAuto:1, MonitorLayout:1, ConnTypeValid:1, _:1, StrongKeys:1, StatusInfo:1, Want32:1, ErrInfo:1>> = <<CapFlags:16/big>>,
             Caps = if DynamicDST == 1 -> [dynamic_dst]; true -> [] end ++
                    if DynVCGFX == 1 -> [dynvc_gfx]; true -> [] end ++
                    if NetCharAuto == 1 -> [netchar_autodetect]; true -> [] end ++
@@ -441,7 +469,8 @@ decode_core(Data) ->
                    if StrongKeys == 1 -> [strongkeys]; true -> [] end ++
                    if StatusInfo == 1 -> [statusinfo]; true -> [] end ++
                    if Want32 == 1 -> [want_32bpp]; true -> [] end ++
-                   if ErrInfo == 1 -> [errinfo]; true -> [] end,
+                   if ErrInfo == 1 -> [errinfo]; true -> [] end ++
+                   if Heartbeat == 1 -> [heartbeat]; true -> [] end,
 
             ConnTypeAtom = if ConnTypeValid == 1 ->
                 case ConnType of
@@ -457,7 +486,7 @@ decode_core(Data) ->
             true -> unknown
             end,
 
-            SoFar#tsud_core{color = Depth, capabilities = Caps, selected = Prots, conn_type = ConnTypeAtom, colors = Supported};
+            SoFar#tsud_core{prodid = ClientProductID, color = Depth, capabilities = Caps, selected = Prots, conn_type = ConnTypeAtom, colors = Supported};
 
         <<NewDepth:16/little, _/binary>> ->
             Depth = case NewDepth of

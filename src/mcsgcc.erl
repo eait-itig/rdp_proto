@@ -251,7 +251,12 @@ encode_cr(#mcs_cr{} = McsCr) ->
 encode_ci(#mcs_ci{} = McsCI) ->
     UserData = #'UserData_SETOF'{key = {h221NonStandard, "Duca"}, value = binary_to_list(McsCI#mcs_ci.data)},
     NameRec = #'ConferenceName'{numeric = McsCI#mcs_ci.conf_name},
-    CCR = #'ConferenceCreateRequest'{conferenceName = NameRec, userData = [UserData]},
+    CCR = #'ConferenceCreateRequest'{conferenceName = NameRec,
+                                     lockedConference = false,
+                                     listedConference = false,
+                                     conductibleConference = false,
+                                     terminationMethod = automatic,
+                                     userData = [UserData]},
     {ok, GccPdu} = gccp_per:encode('ConnectGCCPDU', {conferenceCreateRequest, CCR}),
     CD = #'ConnectData'{connectPDU = binary_to_list(GccPdu)},
     {ok, CDData} = gccp_per:encode('ConnectData', CD),
