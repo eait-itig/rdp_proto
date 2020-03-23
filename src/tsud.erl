@@ -122,6 +122,10 @@ encode(#tsud_core{} = Rec) -> {ok, encode_core(Rec)};
 encode(#tsud_security{} = Rec) -> {ok, encode_security(Rec)};
 encode(#tsud_cluster{} = Rec) -> {ok, encode_cluster(Rec)};
 encode(#tsud_net{} = Rec) -> {ok, encode_net(Rec)};
+encode(#tsud_monitor{} = Rec) -> {ok, encode_monitor(Rec)};
+encode(#tsud_msgchannel{} = Rec) -> {ok, encode_msgchannel(Rec)};
+encode(#tsud_monitor_ex{} = Rec) -> {ok, encode_monitor_ex(Rec)};
+encode(#tsud_multitransport{} = Rec) -> {ok, encode_multitransport(Rec)};
 encode(#tsud_svr_core{} = Rec) -> {ok, encode_svr_core(Rec)};
 encode(#tsud_svr_security{} = Rec) -> {ok, encode_svr_security(Rec)};
 encode(#tsud_svr_net{} = Rec) -> {ok, encode_svr_net(Rec)};
@@ -333,14 +337,28 @@ decode_monitor_defs(Bin) ->
     FlagAtoms = if Primary == 1 -> [primary]; true -> [] end,
     [#tsud_monitor_def{left = Left, top = Top, right = Right, bottom = Bottom, flags = FlagAtoms} | decode_monitor_defs(Rest)].
 
+encode_monitor_def(#tsud_monitor_def{left = Left, top = Top, right = Right, bottom = Bottom, flags = FlagAtoms}) ->
+    Primary = case lists:member(primary, FlagAtoms) of true -> 1; _ -> 0 end,
+    <<Flags:32/big>> = <<0:31, Primary:1>>,
+    <<Left:32/little-signed, Top:32/little-signed, Right:32/little-signed, Bottom:32/little-signed, Flags:32/little>>.
+
 decode_monitor(Data) ->
     <<_Flags:32/little, Count:32/little, MonitorBins/binary>> = Data,
     Monitors = decode_monitor_defs(MonitorBins),
     Count = length(Monitors),
     #tsud_monitor{monitors = Monitors}.
 
+encode_monitor(#tsud_monitor{monitors = Monitors}) ->
+    MonitorBins = [encode_monitor_def(M) || M <- Monitors],
+    Count = length(Monitors),
+    Bins = [<<0:32, Count:32/little>> | MonitorBins],
+    iolist_to_binary(Bins).
+
 decode_msgchannel(_Data) ->
     #tsud_msgchannel{}.
+
+encode_msgchannel(#tsud_msgchannel{}) ->
+    <<0:32>>.
 
 decode_monitor_attrs(<<>>) -> [];
 decode_monitor_attrs(Bin) ->
@@ -351,6 +369,9 @@ decode_monitor_attrs(Bin) ->
     end,
     [#tsud_monitor_ex_attr{phys_width = PhysWidth, phys_height = PhysHeight, angle = Angle, desktop_scale = DesktopScale, device_scale = DeviceScale} | decode_monitor_attrs(Rest)].
 
+encode_monitor_attrs(#tsud_monitor_ex_attr{phys_width = PhysWidth, phys_height = PhysHeight, angle = Angle, desktop_scale = DesktopScale, device_scale = DeviceScale}) ->
+    <<PhysWidth:32/little, PhysHeight:32/little, Angle:32/little, DesktopScale:32/little, DeviceScale:32/little>>.
+
 decode_monitor_ex(Data) ->
     <<_Flags:32/little, ElemSize:32/little, Count:32/little, MonitorBins/binary>> = Data,
     ElemSize = 20,
@@ -358,13 +379,29 @@ decode_monitor_ex(Data) ->
     Count = length(Monitors),
     #tsud_monitor_ex{monitors = Monitors}.
 
+encode_monitor_ex(#tsud_monitor_ex{monitors = Monitors}) ->
+    MonitorBins = [encode_monitor_attrs(M) || M <- Monitors],
+    MonBinSize = 20,
+    Count = length(Monitors),
+    Bins = [<<0:32, MonBinSize:32/little, Count:32/little>> | MonitorBins],
+    iolist_to_binary(Bins).
+
 decode_multitransport(Data) ->
     <<Flags:32/little>> = Data,
-    <<_:23, UdpPref:1, _:5, UdpFecLossy:1, _:1, UdpFec:1>> = <<Flags:32/big>>,
+    <<_:22, SoftSync:1, UdpPref:1, _:5, UdpFecLossy:1, _:1, UdpFec:1>> = <<Flags:32/big>>,
     FlagAtoms = if UdpPref == 1 -> [udp_preferred]; true -> [] end ++
                 if UdpFecLossy == 1 -> [udp_fec_lossy]; true -> [] end ++
-                if UdpFec == 1 -> [udp_fec]; true -> [] end,
+                if UdpFec == 1 -> [udp_fec]; true -> [] end ++
+                if SoftSync == 1 -> [softsync]; true -> [] end,
     #tsud_multitransport{flags = FlagAtoms}.
+
+encode_multitransport(#tsud_multitransport{flags = FlagAtoms}) ->
+    UdpPref = case lists:member(udp_preferred, FlagAtoms) of true -> 1; _ -> 0 end,
+    UdpFecLossy = case lists:member(udp_fec_lossy, FlagAtoms) of true -> 1; _ -> 0 end,
+    UdpFec = case lists:member(udp_fec, FlagAtoms) of true -> 1; _ -> 0 end,
+    SoftSync = case lists:member(softsync, FlagAtoms) of true -> 1; _ -> 0 end,
+    <<Flags:32/big>> = <<0:22, SoftSync:1, UdpPref:1, 0:5, UdpFecLossy:1, 0:1, UdpFec:1>>,
+    <<Flags:32/little>>.
 
 decode_svr_multitransport(Data) ->
     <<Flags:32/little>> = Data,
