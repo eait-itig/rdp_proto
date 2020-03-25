@@ -1157,12 +1157,7 @@ decode_ts_ext_info(Bin0, SoFar0 = #ts_info{}) ->
             end
         end,
         fun(Bin, SoFar) ->
-            case Bin of
-                <<>> ->
-                    {return, {ok, SoFar}};
-                _ ->
-                    {return, {ok, SoFar#ts_info{extra = Bin}}}
-            end
+            {return, {ok, SoFar}}
         end
     ], [Bin0, SoFar0]).
 
