@@ -759,7 +759,7 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Chan}},
     case proplists:get_value(Chan, Chans) of
         undefined ->
             lager:warning("got data on unknown vchannel ~p: ~p", [Chan, Data]),
-            {next_state, run_ui, S};
+            {next_state, running, S};
 
         #tsud_net_channel{name = Name} ->
             case rdpp:decode_vchan(Data) of
@@ -771,18 +771,18 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Chan}},
                                     % TODO: make this available as events
                                     % to the callback module?
                                     lager:debug("cliprdr: ~s", [cliprdr:pretty_print(ClipPdu)]),
-                                    {next_state, run_ui, S};
+                                    {next_state, running, S};
                                 Err ->
                                     lager:warning("cliprdr decode failed: ~p (~s)", [Err, rdpp:pretty_print(VPkt)]),
-                                    {next_state, run_ui, S}
+                                    {next_state, running, S}
                             end;
                         _ ->
                             lager:debug("unhandled data on vchannel ~p (~p): ~s", [Name, Chan, rdpp:pretty_print(VPkt)]),
-                            {next_state, run_ui, S}
+                            {next_state, running, S}
                     end;
                 _ ->
-                    lager:warning("run_ui got invalid data on vchannel ~p (~p): ~p", [Name, Chan, Data]),
-                    {next_state, run_ui, S}
+                    lager:warning("got invalid data on vchannel ~p (~p): ~p", [Name, Chan, Data]),
+                    {next_state, running, S}
             end
     end;
 
