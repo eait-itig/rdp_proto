@@ -181,7 +181,7 @@ raw_mode({start_tls, SslOpts, LastPacket},
         S = #state{sslsock = none}) ->
     start_tls(raw_mode, LastPacket, SslOpts, S);
 
-raw_mode({send_redirect, _, _},
+raw_mode({send_redirect, _, _, _},
         S = #state{}) ->
     {reply, {error, raw_mode}, raw_mode, S};
 
@@ -714,14 +714,14 @@ running(close,
     end;
 
 
-running({send_redirect, Cookie, _Hostname},
+running({send_redirect, Cookie, SessId, _Hostname},
         S = #state{shareid = ShareId,
             mcs = #mcs_state{us = Us, iochan = IoChan}}) ->
     {ok, Redir} = rdpp:encode_sharecontrol(
         #ts_redir{
             channel = Us,
             shareid = ShareId,
-            sessionid = crypto:rand_uniform(0,1 bsl 16),
+            sessionid = SessId,
             flags = [],
             cookie = <<Cookie/binary, 16#0d, 16#0a>> }),
     ok = rdp_server:send({self(), S}, #mcs_srv_data{
