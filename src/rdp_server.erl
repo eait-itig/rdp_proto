@@ -127,10 +127,20 @@ get_canvas(Srv) ->
 
 -spec get_redir_support(server()) -> true | false.
 get_redir_support(Srv) ->
-    #state{tsuds = Tsuds} = curstate(Srv),
+    #state{tsuds = Tsuds, caps = Caps} = curstate(Srv),
     case lists:keyfind(tsud_cluster, 1, Tsuds) of
         #tsud_cluster{flags = Flags, version = V} when V >= 4 ->
-            lists:member(supported, Flags);
+            case lists:member(supported, Flags) of
+                true ->
+                    #ts_cap_general{os = Os} = lists:keyfind(ts_cap_general, 1, Caps),
+                    #tsud_core{version = PV, client_build = B} = lists:keyfind(tsud_core, 1, Tsuds),
+                    case {Os, PV} of
+                        % official client on MacOS version 8 is broken
+                        {[osx, _], [8, 4]} when (B > 10000) and (B < 30000) -> false;
+                        _ -> true
+                    end;
+                false -> false
+            end;
         _ ->
             false
     end.
