@@ -45,7 +45,7 @@ initial_listeners(Sup) ->
     ok.
 
 init([Port, Mod]) ->
-    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {active, false}, {reuseaddr, true}]),
+    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {active, false}, {keepalive, true}, {reuseaddr, true}]),
     spawn_link(?MODULE, initial_listeners, [self()]),
     Server = {undefined,
         {rdp_server_fsm, start_link, [ListenSocket, Mod, self()]},
