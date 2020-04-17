@@ -112,7 +112,7 @@ curstate({Pid, State0}) ->
             State1
     end.
 
--spec get_peer(server()) -> inet:ip_address().
+-spec get_peer(server()) -> {inet:ip_address(), integer()}.
 get_peer(Srv) ->
     #state{peer = Peer} = curstate(Srv),
     Peer.
