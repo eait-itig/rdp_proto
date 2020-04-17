@@ -45,5 +45,5 @@
     x224 = #x224_state{} :: #x224_state{},
     mcs = #mcs_state{} :: #mcs_state{},
     client_info :: undefined | #ts_info{},
-    peer :: undefined | inet:ip_address(),
+    peer :: undefined | {inet:ip_address(), integer()},
     bpp :: undefined | integer()}).
