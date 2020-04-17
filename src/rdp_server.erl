@@ -39,7 +39,7 @@
     send_redirect/4, close/1, watch_child/2, get_peer/1
     ]).
 
--opaque server() :: {pid(), #state{}}.
+-type server() :: {pid(), #state{}}.
 -export_type([server/0]).
 
 -callback init(Peer :: {inet:ip_address(), Port :: integer()}) -> {ok, State :: term()} | {stop, Reason :: term(), State :: term()}.
