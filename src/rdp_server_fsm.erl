@@ -152,7 +152,9 @@ start_tls(NextState, Packet, SslOpts,
             {ok, Info} = ssl:connection_information(SslSock),
             Proto = proplists:get_value(protocol, Info),
             Cipher = proplists:get_value(selected_cipher_suite, Info),
-            lager:info("~p: accepted tls ~p (cipher = ~p)", [S#state.peer, Proto, Cipher]),
+            SNIHost = proplists:get_value(sni_hostname, Info, none),
+            lager:info("~p: accepted tls ~p (cipher = ~p, sni = ~p)",
+                [S#state.peer, Proto, Cipher, SNIHost]),
             ok = ssl:setopts(SslSock, [binary,
                 {active, true}, {nodelay, true}]),
             {next_state, NextState,
@@ -941,7 +943,9 @@ terminate(Reason, State, S = #state{peer = P, mod = Mod, modstate = MS}) ->
     case State of
         initiation -> ok;
         mcs_connect -> ok;
-        _ -> lager:debug("frontend terminating due to ~p, was connected to ~p", [Reason, P])
+        _ ->
+            lager:debug("rdp_server_fsm terminating due to ~p, "
+                "was connected to ~p in state ~p", [Reason, P, State])
     end,
     Mod:terminate({self(), S}, MS).
 
