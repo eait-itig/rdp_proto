@@ -30,7 +30,7 @@
 -define(sec_flags, [flagshi_valid, heartbeat, autodetect_rsp, autodetect_req, salted_mac, redirection, encrypt_license, skip, license, info, ignore_seqno, reset_seqno, encrypt, multitrans_rsp, multitrans_req, security]).
 -define(sec_types, [autodetect_rsp, autodetect_req, redirection, license, info, multitrans_rsp, multitrans_req, security, heartbeat]).
 
--define(cc_prot_flags, [{skip,28}, credssp_early, skip, credssp, ssl]).
+-define(cc_prot_flags, [{skip,28}, credssp_early, rdstls, credssp, ssl]).
 
 -define(vchan_flags, [{skip,8}, mppc_flushed, mppc_at_front, compression, {compress_type, 4}, {skip,17}, resume, suspend, show_protocol, last, first]).
 

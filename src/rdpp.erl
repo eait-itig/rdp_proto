@@ -1070,21 +1070,29 @@ decode_ts_date(Bin) ->
     <<Year:16/little, Month:16/little, DoW:16/little, Nth:16/little, Hour:16/little, Min:16/little, Sec:16/little, Milli:16/little>> = Bin,
     {{Year, Month, DoW, Nth}, {Hour, Min, Sec, Milli}}.
 
+ts_string_to_list(Flags, Str0) ->
+    Str1 = case lists:member(unicode, Flags) of
+        true -> unicode:characters_to_binary(Str0, {utf16, little}, utf8);
+        false -> unicode:characters_to_binary(Str0, latin1, utf8)
+    end,
+    [Str2 | _] = binary:split(Str1, <<0>>),
+    unicode:characters_to_list(Str2, utf8).
+
 decode_ts_ext_info(Bin0, SoFar0 = #ts_info{}) ->
     maybe([
-        fun(Bin, SoFar) ->
+        fun(Bin, SoFar = #ts_info{flags = Fl}) ->
             case Bin of
                 <<Af:16/little, Len:16/little, AddrStringZero:Len/binary, Rest/binary>> ->
                     case Af of
                         16#00 ->
                             {continue, [Rest, SoFar]};
                         16#02 ->
-                            [AddrString | _] = binary:split(AddrStringZero, <<0>>),
-                            {ok, IP} = inet:parse_ipv4_address(binary_to_list(AddrString)),
+                            AddrString = ts_string_to_list(Fl, AddrStringZero),
+                            {ok, IP} = inet:parse_ipv4_address(AddrString),
                             {continue, [Rest, SoFar#ts_info{client_address = IP}]};
                         16#17 ->
-                            [AddrString | _] = binary:split(AddrStringZero, <<0>>),
-                            {ok, IP} = inet:parse_ipv6_address(binary_to_list(AddrString)),
+                            AddrString = ts_string_to_list(Fl, AddrStringZero),
+                            {ok, IP} = inet:parse_ipv6_address(AddrString),
                             {continue, [Rest, SoFar#ts_info{client_address = IP}]};
                         _ ->
                             lager:warning("unhandled client address family: ~p (length ~p)", [Af, Len]),
