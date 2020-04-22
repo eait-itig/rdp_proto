@@ -33,6 +33,9 @@
 -export([start_link/2, init/1, start_frontend/1]).
 -export([initial_listeners/1]).
 
+-spec start_link(Port :: integer(), Mod :: atom() | {atom(), term()}) -> {ok, pid()} | {error, term()}.
+start_link(Port, {Mod, ModInitArg}) ->
+    supervisor:start_link(?MODULE, [Port, {Mod, [ModInitArg]}]);
 start_link(Port, Mod) ->
     supervisor:start_link(?MODULE, [Port, Mod]).
 
@@ -44,10 +47,10 @@ initial_listeners(Sup) ->
     [start_frontend(Sup) || _ <- lists:seq(1,20)],
     ok.
 
-init([Port, Mod]) ->
+init([Port, ModArg]) ->
     {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {active, false}, {keepalive, true}, {reuseaddr, true}]),
     spawn_link(?MODULE, initial_listeners, [self()]),
     Server = {undefined,
-        {rdp_server_fsm, start_link, [ListenSocket, Mod, self()]},
+        {rdp_server_fsm, start_link, [ListenSocket, ModArg, self()]},
         temporary, 1000, worker, [rdp_server_fsm]},
     {ok, {{simple_one_for_one, 60, 60}, [Server]}}.

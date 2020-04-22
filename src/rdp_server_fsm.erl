@@ -37,16 +37,23 @@
 -export([accept/2, initiation/2, mcs_connect/2, mcs_attach_user/2, mcs_chans/2, rdp_clientinfo/2, rdp_capex/2, init_finalize/2, running/2, running/3, raw_mode/2, raw_mode/3]).
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
--spec start_link(Sock :: term(), Mod :: atom(), Sup :: pid()) -> {ok, pid()}.
+-spec start_link(Sock :: term(), Mod :: atom() | {atom(), [term()]}, Sup :: pid()) -> {ok, pid()}.
 start_link(Sock, Mod, Sup) ->
     gen_fsm:start_link(?MODULE, [Sock, Mod, Sup], []).
+
+init([LSock, {Mod, InitArgs}, Sup]) ->
+    random:seed(os:timestamp()),
+    process_flag(trap_exit, true),
+    {ok, accept, #state{mod = Mod, initargs = InitArgs, sup = Sup, lsock = LSock,
+        chansavail=lists:seq(1002,1002+35)}, 0};
 
 init([LSock, Mod, Sup]) ->
     random:seed(os:timestamp()),
     process_flag(trap_exit, true),
-    {ok, accept, #state{mod = Mod, sup = Sup, lsock = LSock, chansavail=lists:seq(1002,1002+35)}, 0}.
+    {ok, accept, #state{mod = Mod, initargs = [], sup = Sup, lsock = LSock,
+        chansavail=lists:seq(1002,1002+35)}, 0}.
 
-accept(timeout, S = #state{mod = Mod, sup = Sup, lsock = LSock}) ->
+accept(timeout, S = #state{mod = Mod, initargs = InitArgs0, sup = Sup, lsock = LSock}) ->
     % accept a new connection
     {ok, Sock} = gen_tcp:accept(LSock),
 
@@ -60,7 +67,8 @@ accept(timeout, S = #state{mod = Mod, sup = Sup, lsock = LSock}) ->
         {ok, P} -> P;
         _ -> undefined
     end,
-    case Mod:init(Peer) of
+    InitArgs1 = [Peer | InitArgs0],
+    case erlang:apply(Mod, init, InitArgs1) of
         {ok, ModState} ->
             {next_state, initiation, S#state{
                 sock = Sock, peer = Peer, modstate = ModState}};

@@ -30,7 +30,9 @@
 -record(state, {
     lsock,
     sock,
-    mod :: atom(), modstate :: term(),
+    mod :: atom(),
+    initargs :: [term()],
+    modstate :: term(),
     sup :: pid(),
     unused,
     watchkids = [] :: [pid()],
