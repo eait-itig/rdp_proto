@@ -796,6 +796,7 @@ encode_sharedata(#ts_sharedata{shareid = ShareId, data = Pdu, priority = Prio, c
         #ts_fontmap{} -> {40, encode_ts_fontmap(Pdu)};
         #ts_update_orders{} -> {2, encode_ts_update(Pdu)};
         #ts_update_bitmaps{} -> {2, encode_ts_update(Pdu)};
+        #ts_monitor_layout{} -> {55, encode_ts_monitor_layout(Pdu)};
         {N, Data} -> {N, Data}
     end,
     CompType = case CompTypeAtom of '8k' -> 0; '64k' -> 1; 'rdp6' -> 2; 'rdp61' -> 3; I when is_integer(I) -> I; _ -> 0 end,
@@ -846,6 +847,11 @@ encode_ts_update(Rec) ->
         #ts_update_bitmaps{} -> {1, encode_ts_update_bitmaps(Rec)}
     end,
     <<Type:16/little, Inner/binary>>.
+
+encode_ts_monitor_layout(#ts_monitor_layout{monitors = Ms}) ->
+    Count = length(Ms),
+    iolist_to_binary([<<Count:32/little>>,
+        [tsud:encode_monitor_def(M) || M <- Ms]]).
 
 ceil(X) ->
     T = erlang:trunc(X),

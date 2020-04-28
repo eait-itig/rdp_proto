@@ -121,9 +121,18 @@ get_peer(Srv) ->
 
 -spec get_canvas(server()) -> {Width :: integer(), Height :: integer(), Bpp :: integer()}.
 get_canvas(Srv) ->
-    #state{caps = Caps, bpp = Bpp} = curstate(Srv),
-    #ts_cap_bitmap{width = W, height = H} = lists:keyfind(ts_cap_bitmap, 1, Caps),
-    {W, H, Bpp}.
+    #state{caps = Caps, tsuds = Tsuds, bpp = Bpp} = curstate(Srv),
+    case lists:keyfind(tsud_monitor, 1, Tsuds) of
+        #tsud_monitor{monitors = Ms} ->
+            [{W, H}] = [{R+1, B+1} ||
+                #tsud_monitor_def{left = L, top = T, right = R, bottom = B}
+                <- Ms, (L == 0) and (T == 0)],
+            {W, H, Bpp};
+        _ ->
+            #ts_cap_bitmap{width = W, height = H} = lists:keyfind(
+                ts_cap_bitmap, 1, Caps),
+            {W, H, Bpp}
+    end.
 
 -spec get_redir_support(server()) -> true | false.
 get_redir_support(Srv) ->

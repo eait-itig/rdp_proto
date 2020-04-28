@@ -36,6 +36,7 @@
 
 -export([decode_core/1, decode_cluster/1, decode_security/1, decode_net/1, decode_svr_core/1, decode_svr_net/1, decode_svr_security/1, decode_monitor/1, decode_msgchannel/1, decode_monitor_ex/1, decode_multitransport/1, decode_svr_msgchannel/1, decode_svr_multitransport/1]).
 -export([encode_core/1, encode_cluster/1, encode_security/1, encode_net/1]).
+-export([encode_monitor_def/1]).
 
 -define(pp(Rec),
 pretty_print(Rec, N) ->

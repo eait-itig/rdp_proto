@@ -85,6 +85,7 @@
 -record(ts_control, {action, grantid, controlid}).
 -record(ts_fontlist, {}).
 -record(ts_fontmap, {}).
+-record(ts_monitor_layout, {monitors=[]}).
 
 -record(ts_order_opaquerect, {flags=[], dest, size, color={0,0,0}, bpp = 24}).
 -record(ts_order_srcblt, {flags=[], dest, src, size, rop = ?ROP_SRCCOPY}).
