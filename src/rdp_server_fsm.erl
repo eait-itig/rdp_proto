@@ -480,6 +480,24 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             % the client's supported list
             true = lists:member(Format, Core#tsud_core.colors),
 
+            % if they sent us multi-monitor, we have to send a canvas size
+            % of the union of all the monitors in the bitmap caps (otherwise
+            % mstsc will try to scale the size we send to the total monitor
+            % footprint, which will go pretty weird)
+            %
+            % note this works in concert with us sending the monitor layout
+            % pdu later (in init_finalize)
+            {W, H} = case lists:keyfind(tsud_monitor, 1, S#state.tsuds) of
+                #tsud_monitor{monitors = Ms} ->
+                    MaxRight = lists:max([R ||
+                        #tsud_monitor_def{right = R} <- Ms]),
+                    MaxBottom = lists:max([B ||
+                        #tsud_monitor_def{bottom = B} <- Ms]),
+                    {MaxRight + 1, MaxBottom + 1};
+                _ ->
+                    {Core#tsud_core.width, Core#tsud_core.height}
+            end,
+
             % this is meant to be "random" by the GCC spec, but
             % some clients seem to break if it's not set to 1
             Rand = 1,
@@ -523,8 +541,8 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
                     #ts_cap_bitmap{
                         % give the client whatever size session they
                         % asked for
-                        width = Core#tsud_core.width,
-                        height = Core#tsud_core.height,
+                        width = W,
+                        height = H,
                         % but use the colour depth we worked out above
                         bpp = Bpp,
                         flags = [resize, compression, dynamic_bpp,
@@ -667,6 +685,8 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = FontMap}),
 
+            % if they sent us multi-monitor tsuds, send them the monitor layout
+            % pdu now so their client knows we accepted it
             case lists:keyfind(tsud_monitor, 1, S#state.tsuds) of
                 #tsud_monitor{monitors = Ms} ->
                     {ok, MonitorMap} = rdpp:encode_sharecontrol(
