@@ -667,20 +667,17 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = FontMap}),
 
-            Ms = case lists:keyfind(tsud_monitor, 1, S#state.tsuds) of
-                #tsud_monitor{monitors = MMs} -> MMs;
+            case lists:keyfind(tsud_monitor, 1, S#state.tsuds) of
+                #tsud_monitor{monitors = Ms} ->
+                    {ok, MonitorMap} = rdpp:encode_sharecontrol(
+                        #ts_sharedata{
+                            channel = Us, shareid = ShareId,
+                            data = #ts_monitor_layout{monitors = Ms}}),
+                    ok = rdp_server:send({self(), S}, #mcs_srv_data{
+                        user = Us, channel = IoChan, data = MonitorMap});
                 _ ->
-                    #tsud_core{width = W, height = H} = lists:keyfind(
-                        tsud_core, 1, S#state.tsuds),
-                    [#tsud_monitor_def{flags = [primary], left = 0, top = 0,
-                                       right = W - 1, bottom = H - 1}]
+                    ok
             end,
-            {ok, MonitorMap} = rdpp:encode_sharecontrol(
-                #ts_sharedata{
-                    channel = Us, shareid = ShareId,
-                    data = #ts_monitor_layout{monitors = Ms}}),
-            ok = rdp_server:send({self(), S}, #mcs_srv_data{
-                user = Us, channel = IoChan, data = MonitorMap}),
 
             % make sure the mouse pointer is visible
             ok = rdp_server:send_update({self(), S},
