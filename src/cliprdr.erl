@@ -124,8 +124,10 @@ decode(16#0001, MsgFlags, _Caps, _Data) ->
     {ok, #cliprdr_monitor_ready{flags = sets:to_list(MsgFlags)}};
 
 decode(16#0002, MsgFlags, Caps, Data) ->
-    #cliprdr_cap_general{flags = F} = lists:keyfind(cliprdr_cap_general, 1, Caps),
-    UseLongFormat = lists:member(long_names, F),
+    UseLongFormat = case lists:keyfind(cliprdr_cap_general, 1, Caps) of
+        #cliprdr_cap_general{flags = F} -> lists:member(long_names, F);
+        _ -> false
+    end,
     Formats = if
         UseLongFormat -> decode_long_format(Data);
         not UseLongFormat -> decode_short_format(Data)
