@@ -164,7 +164,6 @@ copied(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
 decode_vpdu(VPdu = #ts_vchan{flags = Fl, data = D}, S0 = #?MODULE{caps = Caps}) ->
     case cliprdr:decode(D, Caps) of
         {ok, ClipPdu} ->
-            lager:debug("cliprdr: ~s", [cliprdr:pretty_print(ClipPdu)]),
             {keep_state_and_data, [{next_event, cast, {pdu, ClipPdu}}]};
         Err ->
             lager:debug("cliprdr decode fail: ~p (~s)", [Err, rdpp:pretty_print(VPdu)]),
