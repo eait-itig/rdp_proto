@@ -32,7 +32,7 @@
 
 -define(cc_prot_flags, [{skip,28}, credssp_early, rdstls, credssp, ssl]).
 
--define(vchan_flags, [{skip,8}, mppc_flushed, mppc_at_front, compression, {compress_type, 4}, {skip,17}, resume, suspend, show_protocol, last, first]).
+-define(vchan_flags, [{skip,8}, mppc_flushed, mppc_at_front, compression, skip, {compress_type, 4}, {skip,9}, resume, suspend, show_protocol, {skip, 2}, last, first]).
 
 -define(ts_cap_general_flags, [{skip, 5}, short_bitmap_hdr, {skip, 5}, salted_mac, autoreconnect, long_creds, skip, fastpath, refresh_rect, suppress_output]).
 

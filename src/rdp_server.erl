@@ -36,7 +36,8 @@
     send/2, send_raw/2, send_update/2, start_tls/3,
     mcs_state/1, x224_state/1, get_tsuds/1, get_caps/1,
     get_canvas/1, get_redir_support/1, get_autologon/1,
-    send_redirect/4, close/1, watch_child/2, get_peer/1
+    send_redirect/4, close/1, watch_child/2, get_peer/1,
+    send_vchan/3, get_vchan_pid/2
     ]).
 
 -type server() :: {pid(), #state{}}.
@@ -79,6 +80,32 @@ send({Pid, #state{sslsock = Sock}}, McsPkt) ->
     case self() of
         Pid -> ssl:send(Sock, Packet);
         _ -> gen_fsm:sync_send_event(Pid, {send, Packet})
+    end.
+
+-spec send_vchan(server(), mcs_chan(), #ts_vchan{}) -> ok | {error, term()}.
+send_vchan({Pid, #state{sslsock = Sock, mcs = Mcs}}, ChanId, VPdu) ->
+    #mcs_state{us = Us} = Mcs,
+    VChanData = rdpp:encode_vchan(VPdu),
+    {ok, McsData} = mcsgcc:encode_dpdu(#mcs_srv_data{
+        user = Us, channel = ChanId, data = VChanData}),
+    {ok, DtData} = x224:encode(#x224_dt{data = McsData}),
+    {ok, Packet} = tpkt:encode(DtData),
+    case self() of
+        Pid -> ssl:send(Sock, Packet);
+        _ -> gen_fsm:sync_send_event(Pid, {send, Packet})
+    end.
+
+-spec get_vchan_pid(server(), atom()) -> {ok, pid()} | {error, term()}.
+get_vchan_pid({Pid, #state{chanfsms = Fsms}}, WantMod) ->
+    Matches = maps:fold(fun(_ChanId, {FsmMod, FsmPid}, Acc0) ->
+        case FsmMod of
+            WantMod -> [FsmPid | Acc0];
+            _ -> Acc0
+        end
+    end, [], Fsms),
+    case Matches of
+        [] -> {error, not_supported};
+        [FsmPid] -> {ok, FsmPid}
     end.
 
 % only for raw_mode

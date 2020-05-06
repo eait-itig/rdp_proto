@@ -246,11 +246,13 @@ encode_sec_flags({Type, Flags}) ->
     <<Out:16/big>> = encode_bit_flags(FlagSet, ?sec_flags),
     Out.
 
+-spec encode_vchan(#ts_vchan{}) -> binary().
 encode_vchan(#ts_vchan{flags = FlagList, data = Data}) ->
     <<Flags:32/big>> = encode_bit_flags(sets:from_list(FlagList), ?vchan_flags),
     Len = byte_size(Data),
     <<Len:32/little, Flags:32/little, Data/binary>>.
 
+-spec decode_vchan(binary()) -> {ok, #ts_vchan{}} | {error, term()}.
 decode_vchan(<<Len:32/little, Flags:32/little, Data:Len/binary, Pad/binary>>) ->
     FlagSet = decode_bit_flags(<<Flags:32/big>>, ?vchan_flags),
     PadLen = 8*byte_size(Pad),

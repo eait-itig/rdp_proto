@@ -48,5 +48,5 @@
     them = none :: mcs_user(),
     iochan = none :: mcs_chan(),
     msgchan = none :: mcs_chan(),
-    chans = [] :: [{mcs_chan(), net_channel()}]
+    chans = #{} :: #{mcs_chan() => net_channel()}
     }).

@@ -31,3 +31,6 @@
 -record(cliprdr_cap_general, {version = 2, flags = []}).
 -record(cliprdr_monitor_ready, {flags = []}).
 -record(cliprdr_format_list, {flags = [], formats = []}).
+-record(cliprdr_format_resp, {flags = []}).
+-record(cliprdr_data_req, {flags = [], format :: integer()}).
+-record(cliprdr_data_resp, {flags = [], data :: binary()}).

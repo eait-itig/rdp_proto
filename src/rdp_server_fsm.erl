@@ -285,8 +285,9 @@ mcs_connect({mcs_pdu, #mcs_ci{} = McsCi},
                         % of the channels.
                         {C, SS2} = next_channel(SS),
                         Mcs0 = SS2#state.mcs,
+                        Chans0 = Mcs0#mcs_state.chans,
                         Mcs1 = Mcs0#mcs_state{
-                            chans = [{C, Chan} | Mcs0#mcs_state.chans]},
+                            chans = Chans0#{C => Chan}},
                         SS3 = SS2#state{mcs = Mcs1},
                         {SS3, [C | Cs]}
                     end, {S3, []}, ReqChans),
@@ -703,10 +704,12 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             ok = rdp_server:send_update({self(), S},
                 #fp_update_mouse{mode = default}),
 
-            Server = {self(), S},
+            S1 = start_vchan_fsms(S),
+            Server = {self(), S1},
             case Mod:init_ui(Server, MS) of
                 {ok, MS2} ->
-                    {next_state, running, S#state{modstate = MS2}};
+                    S2 = S1#state{modstate = MS2},
+                    {next_state, running, S2};
                 {stop, Reason, MS2} ->
                     {stop, Reason, S#state{modstate = MS2}}
             end;
@@ -795,37 +798,30 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
     end;
 
 running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Chan}},
-        S = #state{mcs = #mcs_state{them = Them, chans = Chans}}) ->
+        S = #state{chanfsms = Fsms, mcs = #mcs_state{them = Them, chans = Chans}}) ->
     % data can come in on other static channels too, not just iochan
     #mcs_data{data = Data} = Pdu,
-    case proplists:get_value(Chan, Chans) of
-        undefined ->
-            lager:warning("got data on unknown vchannel ~p: ~p", [Chan, Data]),
-            {next_state, running, S};
-
-        #tsud_net_channel{name = Name} ->
+    case Chans of
+        #{Chan := #tsud_net_channel{name = Name}} ->
             case rdpp:decode_vchan(Data) of
-                {ok, VPkt = #ts_vchan{data = VData}} ->
-                    case string:to_lower(Name) of
-                        "cliprdr" ->
-                            case cliprdr:decode(VData) of
-                                {ok, ClipPdu} ->
-                                    % TODO: make this available as events
-                                    % to the callback module?
-                                    lager:debug("cliprdr: ~s", [cliprdr:pretty_print(ClipPdu)]),
-                                    {next_state, running, S};
-                                Err ->
-                                    lager:warning("cliprdr decode failed: ~p (~s)", [Err, rdpp:pretty_print(VPkt)]),
-                                    {next_state, running, S}
-                            end;
+                {ok, VPkt = #ts_vchan{}} ->
+                    case Fsms of
+                        #{Chan := {Mod, Pid}} ->
+                            ok = Mod:handle_pdu(Pid, VPkt);
                         _ ->
-                            lager:debug("unhandled data on vchannel ~p (~p): ~s", [Name, Chan, rdpp:pretty_print(VPkt)]),
-                            {next_state, running, S}
-                    end;
+                            lager:warning(
+                                "unhandled data on vchannel ~p (~p): ~s",
+                                [Name, Chan, rdpp:pretty_print(VPkt)])
+                    end,
+                    {next_state, running, S};
                 _ ->
                     lager:warning("got invalid data on vchannel ~p (~p): ~p", [Name, Chan, Data]),
                     {next_state, running, S}
-            end
+            end;
+
+        _ ->
+            lager:warning("got data on unknown vchannel ~p: ~p", [Chan, Data]),
+            {next_state, running, S}
     end;
 
 running({x224_pdu, #x224_dr{}}, S = #state{sslsock = SslSock}) ->
@@ -977,6 +973,19 @@ handle_sync_event(get_state, _From, State, S = #state{}) ->
     {reply, {ok, S}, State, S};
 handle_sync_event(Ev, _From, _State, #state{} = S) ->
     {stop, {bad_event, Ev}, S}.
+
+start_vchan_fsms(S0 = #state{mcs = Mcs, chanfsms = Fsms0}) ->
+    #mcs_state{chans = Chans} = Mcs,
+    Fsms1 = maps:fold(fun (Id, Chan, Acc0) ->
+        #tsud_net_channel{name = Name} = Chan,
+        case string:to_lower(Name) of
+            "cliprdr" ->
+                {ok, Pid} = cliprdr_fsm:start_link({self(), S0}, Id),
+                Acc0#{Id => {cliprdr_fsm, Pid}};
+            _ -> Acc0
+        end
+    end, Fsms0, Chans),
+    S0#state{chanfsms = Fsms1}.
 
 %% @private
 terminate(Reason, State, S = #state{peer = P, mod = Mod, modstate = MS}) ->

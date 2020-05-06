@@ -2,7 +2,7 @@
 %% rdpproxy
 %% remote desktop proxy
 %%
-%% Copyright 2012-2015 Alex Wilson <alex@uq.edu.au>
+%% Copyright 2020 Alex Wilson <alex@uq.edu.au>
 %% The University of Queensland
 %% All rights reserved.
 %%
@@ -27,26 +27,10 @@
 %% THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %%
 
--record(state, {
-    lsock,
-    sock,
-    mod :: atom(),
-    initargs :: [term()],
-    modstate :: term(),
-    sup :: pid(),
-    unused,
-    watchkids = [] :: [pid()],
-    sslsock = none,
-    chansavail=[] :: [integer()],
-    queue=[] :: [binary()],
-    waitchans=[] :: [integer()],
-    tsuds=[] :: [client_tsud()],
-    caps=[] :: [ts_cap()],
-    askedfor=[] :: [atom()],
-    shareid = 0 :: integer(),
-    x224 = #x224_state{} :: #x224_state{},
-    mcs = #mcs_state{} :: #mcs_state{},
-    client_info :: undefined | #ts_info{},
-    peer :: undefined | {inet:ip_address(), integer()},
-    bpp :: undefined | integer(),
-    chanfsms = #{} :: #{mcs_chan() => {atom(), pid()}}}).
+-module(rdp_vchan_fsm).
+
+-include("rdpp.hrl").
+-include("mcsgcc.hrl").
+
+-callback start_link(rdp_server:server(), VChanId :: mcs_chan()) -> {ok, pid()} | {error, term()}.
+-callback handle_pdu(pid(), #ts_vchan{}) -> ok | {error, term()}.
