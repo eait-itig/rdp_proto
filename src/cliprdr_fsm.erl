@@ -74,22 +74,32 @@ terminate(_Reason, _State, #?MODULE{}) ->
     ok.
 
 startup(enter, _PrevState, #?MODULE{srv = Srv, chanid = ChanId}) ->
+    CapsData = cliprdr:encode(#cliprdr_caps{
+        flags = [first, last, show_protocol],
+        caps = [#cliprdr_cap_general{flags = [files, locking, long_names]}]
+    }),
+    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
+        flags = [first, last, show_protocol],
+        data = CapsData
+    }),
     MonReadyData = cliprdr:encode(#cliprdr_monitor_ready{}),
     ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last],
+        flags = [first, last, show_protocol],
         data = MonReadyData
     }),
     keep_state_and_data;
 
-startup(cast, {pdu, #cliprdr_caps{caps = Caps}}, S0 = #?MODULE{}) ->
+startup(cast, {pdu, Pdu = #cliprdr_caps{caps = Caps}}, S0 = #?MODULE{srv = Srv}) ->
     S1 = S0#?MODULE{caps = Caps},
+    {Pid, _} = Srv,
+    lager:debug("cliprdr caps for ~p: ~s", [Pid, cliprdr:pretty_print(Pdu)]),
     {keep_state, S1};
 
 startup(cast, {pdu, #cliprdr_format_list{formats = Fmts}}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
     S1 = S0#?MODULE{formats = Fmts},
     FmtRespData = cliprdr:encode(#cliprdr_format_resp{flags = [ok]}),
     ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last],
+        flags = [first, last, show_protocol],
         data = FmtRespData
     }),
     {next_state, copied, S1};
@@ -112,7 +122,7 @@ copied(cast, {pdu, #cliprdr_format_list{formats = Fmts}}, S0 = #?MODULE{srv = Sr
     S1 = S0#?MODULE{formats = Fmts},
     FmtRespData = cliprdr:encode(#cliprdr_format_resp{flags = [ok]}),
     ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last],
+        flags = [first, last, show_protocol],
         data = FmtRespData
     }),
     {keep_state, S1};
@@ -131,7 +141,7 @@ copied({call, From}, {paste, Format}, S0 = #?MODULE{srv = Srv, chanid = ChanId})
     end,
     DataReqData = cliprdr:encode(#cliprdr_data_req{format = FmtId}),
     ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last],
+        flags = [first, last, show_protocol],
         data = DataReqData
     }),
     {keep_state, S1};
@@ -164,6 +174,7 @@ copied(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
 decode_vpdu(VPdu = #ts_vchan{flags = Fl, data = D}, S0 = #?MODULE{caps = Caps}) ->
     case cliprdr:decode(D, Caps) of
         {ok, ClipPdu} ->
+            %lager:debug("cliprdr: ~s", [cliprdr:pretty_print(ClipPdu)]),
             {keep_state_and_data, [{next_event, cast, {pdu, ClipPdu}}]};
         Err ->
             lager:debug("cliprdr decode fail: ~p (~s)", [Err, rdpp:pretty_print(VPdu)]),

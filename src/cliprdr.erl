@@ -228,7 +228,7 @@ encode_long_format({Id, Name}) ->
     NameBin = unicode:characters_to_binary(Name, {utf16, little}),
     <<Id:32/little, NameBin/binary, 0, 0>>.
 
--define(gencap_flags, [{skip, 28}, locking, no_file_paths, files, long_names]).
+-define(gencap_flags, [{skip, 26}, hugefile, locking, no_file_paths, files, long_names, skip]).
 decode_caps_set(_, 0) -> [];
 decode_caps_set(<<>>, N) when N > 0 -> error({expected_cap_set, N});
 decode_caps_set(<<Type:16/little, Len:16/little, Rest/binary>>, N) ->
