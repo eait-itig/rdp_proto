@@ -258,7 +258,7 @@ mcs_connect({mcs_pdu, #mcs_ci{} = McsCi},
         end,
         fun(S, Tsuds, SoFar) ->
             {ok, Core} = tsud:encode(#tsud_svr_core{
-                version=[8,4], requested = S#state.askedfor,
+                version=[8,5], requested = S#state.askedfor,
                 capabilities = [dynamic_dst]}),
             {continue, [S, Tsuds, <<SoFar/binary, Core/binary>>]}
         end,

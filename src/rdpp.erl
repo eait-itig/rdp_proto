@@ -179,21 +179,27 @@ decoder_mcs_cr(Pdu, McsData, Rem) ->
         _Err ->
             {continue, [Pdu, McsData, Rem]}
     end.
+decode_bit_flags(Bin, Flags) -> decode_bit_flags(Bin, Flags, false).
 
-decode_bit_flags(<<>>, _) -> sets:new();
-decode_bit_flags(Bits, [{skip,N} | RestAtoms]) ->
+decode_bit_flags(<<>>, _, _) -> sets:new();
+decode_bit_flags(Bits, [{skip,N} | RestAtoms], false) ->
     <<_Flags:N, Rest/bitstring>> = Bits,
     decode_bit_flags(Rest, RestAtoms);
-decode_bit_flags(<<_Flag:1, Rest/bitstring>>, [skip | RestAtoms]) ->
+decode_bit_flags(Bits, [{skip,N} | RestAtoms], true) ->
+    <<0:N, Rest/bitstring>> = Bits,
     decode_bit_flags(Rest, RestAtoms);
-decode_bit_flags(Bits, [{FlagAtom, Width} | RestAtoms]) ->
+decode_bit_flags(<<_Flag:1, Rest/bitstring>>, [skip | RestAtoms], false) ->
+    decode_bit_flags(Rest, RestAtoms);
+decode_bit_flags(<<0:1, Rest/bitstring>>, [skip | RestAtoms], true) ->
+    decode_bit_flags(Rest, RestAtoms);
+decode_bit_flags(Bits, [{FlagAtom, Width} | RestAtoms], _) ->
     <<Flag:Width/little, Rest/bitstring>> = Bits,
     case Flag of
         0 -> decode_bit_flags(Rest, RestAtoms);
         1 -> sets:add_element(FlagAtom, decode_bit_flags(Rest, RestAtoms));
         N -> sets:add_element({FlagAtom, N}, decode_bit_flags(Rest, RestAtoms))
     end;
-decode_bit_flags(<<Flag:1, Rest/bitstring>>, [FlagAtom | RestAtoms]) ->
+decode_bit_flags(<<Flag:1, Rest/bitstring>>, [FlagAtom | RestAtoms], _) ->
     case Flag of
         1 -> sets:add_element(FlagAtom, decode_bit_flags(Rest, RestAtoms));
         0 -> decode_bit_flags(Rest, RestAtoms)
@@ -226,7 +232,7 @@ encode_protocol_flags(Protocols) ->
 
 -spec decode_protocol_flags(integer()) -> [atom()].
 decode_protocol_flags(Protocols) ->
-    FlagSet = decode_bit_flags(<<Protocols:32/big>>, ?cc_prot_flags),
+    FlagSet = decode_bit_flags(<<Protocols:32/big>>, ?cc_prot_flags, true),
     sets:to_list(FlagSet).
 
 -spec decode_sec_flags(integer()) -> {Type :: atom(), Flags :: [atom()]}.

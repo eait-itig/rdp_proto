@@ -146,7 +146,7 @@ decode(Data) ->
                     {none, Rest}
             end,
             case RdpData of
-                <<?RDP_NEGREQ:8, _Flags:8, _Length:16/little, Protocols:32/little>> ->
+                <<?RDP_NEGREQ:8, _Flags:8, 8:16/little, Protocols:32/little, _/binary>> ->
                     Prots = rdpp:decode_protocol_flags(Protocols),
                     {ok, #x224_cr{src = SrcRef, dst = DstRef, class = Class, cdt = Cdt, rdp_cookie = Cookie, rdp_protocols = Prots}};
                 _ ->
