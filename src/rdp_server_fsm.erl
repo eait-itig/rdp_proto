@@ -938,12 +938,30 @@ handle_info({ssl_closed, Sock}, State, #state{sslsock = Sock} = S) ->
     end,
     {stop, normal, S};
 
+handle_info({ssl_error, Sock, Reason}, State, #state{sslsock = Sock} = S) ->
+    case State of
+        initiation -> ok;
+        mcs_connect -> ok;
+        _ -> lager:debug("ssl error from remote side: ~p", [Reason])
+    end,
+    ssl:close(Sock),
+    {stop, normal, S};
+
 handle_info({tcp_closed, Sock}, State, #state{sock = Sock} = S) ->
     case State of
         initiation -> ok;
         mcs_connect -> ok;
         _ -> lager:debug("tcp closed by remote side")
     end,
+    {stop, normal, S};
+
+handle_info({tcp_error, Sock, Reason}, State, #state{sock = Sock} = S) ->
+    case State of
+        initiation -> ok;
+        mcs_connect -> ok;
+        _ -> lager:debug("tcp error from remote side: ~p", [Reason])
+    end,
+    gen_tcp:close(Sock),
     {stop, normal, S};
 
 handle_info({'EXIT', Pid, Reason}, State,
@@ -960,7 +978,8 @@ handle_info({'EXIT', Pid, Reason}, State,
             {next_state, State, S}
     end;
 
-handle_info(_Msg, State, S) ->
+handle_info(Msg, State, S) ->
+    lager:debug("unhandled message in state ~p: ~p", [State, Msg]),
     {next_state, State, S}.
 
 handle_event({watch_child, Pid}, State,
