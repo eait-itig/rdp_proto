@@ -1023,7 +1023,9 @@ decode_ts_input(Bin) ->
     <<N:16/little, _:16, Evts/binary>> = Bin,
     #ts_input{events = decode_ts_inpevts(N, Evts)}.
 
-decode_ts_ad(_Fl, <<HdrLen:8, Hdr:(HdrLen-1)/binary, _Data/binary>>) ->
+decode_ts_ad(_Fl, <<HdrLen:8, Rest/binary>>) ->
+    HdrLen1 = HdrLen - 1,
+    <<Hdr:HdrLen1/binary, _Data/binary>> = Rest,
     case Hdr of
         <<0, Seq:16/little, 16#0001:16/little>> ->
             #rdp_rtt{seq = Seq, type = connseq};
