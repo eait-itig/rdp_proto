@@ -104,6 +104,10 @@ pretty_print(Record) ->
 ?pp(ts_cap_surface);
 
 ?pp(ts_vchan);
+
+?pp(ts_autodetect_req);
+?pp(ts_autodetect_resp);
+?pp(rdp_rtt);
 pretty_print(_, _) ->
     no.
 
@@ -1019,13 +1023,37 @@ decode_ts_input(Bin) ->
     <<N:16/little, _:16, Evts/binary>> = Bin,
     #ts_input{events = decode_ts_inpevts(N, Evts)}.
 
+decode_ts_ad(_Fl, <<HdrLen:8, Hdr:(HdrLen-1)/binary, _Data/binary>>) ->
+    case Hdr of
+        <<0, Seq:16/little, 16#0001:16/little>> ->
+            #rdp_rtt{seq = Seq, type = connseq};
+        <<0, Seq:16/little, 16#1001:16/little>> ->
+            #rdp_rtt{seq = Seq, type = postconnect};
+        <<1, Seq:16/little, 16#0000:16/little>> ->
+            #rdp_rtt{seq = Seq}
+    end.
+
+encode_ts_ad(#ts_autodetect_req{pdu = #rdp_rtt{seq = Seq, type = Type}}) ->
+    TypeInt = case Type of
+        postconnect -> 16#1001;
+        connseq -> 16#0001
+    end,
+    Hdr = <<0, Seq:16/little, TypeInt:16/little>>,
+    <<(byte_size(Hdr)+1):8, Hdr/binary>>;
+
+encode_ts_ad(#ts_autodetect_resp{pdu = #rdp_rtt{seq = Seq}}) ->
+    Hdr = <<1, Seq:16/little, 16#0000:16/little>>,
+    <<(byte_size(Hdr)+1):8, Hdr/binary>>.
+
 encode_basic(Rec) ->
     SecFlags = element(2, Rec),
     {Type, Inner} = case Rec of
         #ts_security{} -> {security, encode_ts_security(Rec)};
         #ts_license_vc{} -> {license, encode_ts_license_vc(Rec)};
         #ts_heartbeat{} -> {heartbeat, encode_ts_heartbeat(Rec)};
-        #ts_info{} -> {info, encode_ts_info(Rec)}
+        #ts_info{} -> {info, encode_ts_info(Rec)};
+        #ts_autodetect_req{} -> {autodetect_req, encode_ts_ad(Rec)};
+        #ts_autodetect_resp{} -> {autodetect_rsp, encode_ts_ad(Rec)}
     end,
     Flags = encode_sec_flags({Type, SecFlags}),
     {ok, <<Flags:16/little, 0:16, Inner/binary>>}.
@@ -1038,6 +1066,10 @@ decode_basic(Bin) ->
                 {security, Fl} -> decode_ts_security(Fl, Rest);
                 {info, Fl} -> decode_ts_info(Fl, Rest);
                 {heartbeat, Fl} -> decode_ts_heartbeat(Fl, Rest);
+                {autodetect_req, Fl} ->
+                    {ok, #ts_autodetect_req{pdu = decode_ts_ad(Fl, Rest)}};
+                {autodetect_rsp, Fl} ->
+                    {ok, #ts_autodetect_resp{pdu = decode_ts_ad(Fl, Rest)}};
                 {Type, Fl} ->
                     lager:warning("unhandled basic: ~p, flags = ~p", [Type, Fl]),
                     {error, badpacket}

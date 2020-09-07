@@ -265,19 +265,26 @@ mcs_connect({mcs_pdu, #mcs_ci{} = McsCi},
         fun(S = #state{mcs = Mcs}, Tsuds, SoFar) ->
             % allocate the I/O channel
             {IoChan, S2} = next_channel(S, 1003),
-            S3 = S2#state{mcs = Mcs#mcs_state{iochan = IoChan}},
+            {MsgChan, S3} = case lists:keyfind(tsud_msgchannel, 1, Tsuds) of
+                false -> {none, S2};
+                _ -> next_channel(S2, 1004)
+            end,
+            S4 = S3#state{mcs = Mcs#mcs_state{iochan = IoChan,
+                msgchan = MsgChan}},
             % generate the NET TSUD, allocating any other requested
             % MCS channels
             case lists:keyfind(tsud_net, 1, Tsuds) of
                 false ->
                     {ok, Net} = tsud:encode(#tsud_svr_net{
                         iochannel = IoChan, channels = []}),
-                    % only wait on the iochan
-                    S4 = S3#state{waitchans = [IoChan]},
-                    {continue, [S4, Tsuds, <<SoFar/binary, Net/binary>>]};
+                    S5 = case MsgChan of
+                        none -> S4#state{waitchans = []};
+                        _ -> S4#state{waitchans = [MsgChan]}
+                    end,
+                    {continue, [S5, Tsuds, <<SoFar/binary, Net/binary>>]};
 
                 #tsud_net{channels = ReqChans} ->
-                    {S4, ChansRev} = lists:foldl(fun(Chan, {SS, Cs}) ->
+                    {S5, ChansRev} = lists:foldl(fun(Chan, {SS, Cs}) ->
                         % by spec we should check for the 'init' flag in
                         % the tsud_net_channel here and only allocate
                         % those that have it set, but some buggy
@@ -290,13 +297,17 @@ mcs_connect({mcs_pdu, #mcs_ci{} = McsCi},
                             chans = Chans0#{C => Chan}},
                         SS3 = SS2#state{mcs = Mcs1},
                         {SS3, [C | Cs]}
-                    end, {S3, []}, ReqChans),
-                    Chans = lists:reverse(ChansRev),
+                    end, {S4, []}, ReqChans),
+                    Chans0 = lists:reverse(ChansRev),
+                    Chans1 = case MsgChan of
+                        none -> Chans0;
+                        _ -> Chans0 ++ [MsgChan]
+                    end,
                     % add all the additional channels to the wait list
-                    S5 = S4#state{waitchans = Chans},
+                    S6 = S5#state{waitchans = Chans1},
                     {ok, Net} = tsud:encode(#tsud_svr_net{
-                        iochannel = IoChan, channels = Chans}),
-                    {continue, [S5, Tsuds, <<SoFar/binary, Net/binary>>]}
+                        iochannel = IoChan, channels = Chans0}),
+                    {continue, [S6, Tsuds, <<SoFar/binary, Net/binary>>]}
             end
         end,
         fun(S, Tsuds, SoFar) ->
@@ -307,6 +318,7 @@ mcs_connect({mcs_pdu, #mcs_ci{} = McsCi},
             {continue, [S, Tsuds, <<SoFar/binary, Sec/binary>>]}
         end,
         fun(S, Tsuds, SoFar) ->
+            #state{mcs = #mcs_state{msgchan = MsgChan}} = S,
             case lists:keyfind(tsud_msgchannel, 1, Tsuds) of
                 false ->
                     {continue, [S, Tsuds, SoFar]};
@@ -315,7 +327,7 @@ mcs_connect({mcs_pdu, #mcs_ci{} = McsCi},
                     % seems to ignore this and some things break if it's
                     % not just 0
                     {ok, Bin} = tsud:encode(#tsud_svr_msgchannel{
-                        channel = 0}),
+                        channel = MsgChan}),
                     {continue, [S, Tsuds, <<SoFar/binary, Bin/binary>>]}
             end
         end,
@@ -709,7 +721,14 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             case Mod:init_ui(Server, MS) of
                 {ok, MS2} ->
                     S2 = S1#state{modstate = MS2},
-                    {next_state, running, S2};
+                    S3 = case S#state.mcs of
+                        #mcs_state{msgchan = none} ->
+                            S2;
+                        _ ->
+                            {ok, T} = timer:send_interval(1000, check_ping),
+                            S2#state{pingtimer = T}
+                    end,
+                    {next_state, running, S3};
                 {stop, Reason, MS2} ->
                     {stop, Reason, S#state{modstate = MS2}}
             end;
@@ -734,7 +753,10 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
 %%
 running({send, Packet}, _From, S = #state{sslsock = SslSock}) ->
     Ret = ssl:send(SslSock, Packet),
-    {reply, Ret, running, S}.
+    {reply, Ret, running, S};
+
+running(get_pings, _From, S = #state{lastpings = Q}) ->
+    {reply, {ok, queue:to_list(Q)}, running, S}.
 
 running(close,
         S = #state{shareid = ShareId, sslsock = SslSock,
@@ -758,6 +780,59 @@ running(close,
             {stop, normal, S}
     end;
 
+running({mcs_pdu, #mcs_data{user = Them, channel = MsgChan, data = D}},
+        S = #state{mcs = #mcs_state{them = Them, msgchan = MsgChan}}) ->
+    case rdpp:decode_basic(D) of
+        {ok, #ts_autodetect_resp{pdu = #rdp_rtt{seq = Seq}}} ->
+            InTime = erlang:system_time(microsecond),
+            #state{pings = Pings0} = S,
+            case Pings0 of
+                #{Seq := OutTime} ->
+                    Pings1 = maps:remove(Seq, Pings0),
+                    DeltaMillis = (InTime - OutTime) / 1000.0,
+                    #state{lastpings = Q0} = S,
+                    Q1 = queue:in(DeltaMillis, Q0),
+                    Q2 = case queue:len(Q1) of
+                        N when N > 16 ->
+                            {{value, _}, QQ} = queue:out(Q1),
+                            QQ;
+                        _ ->
+                            Q1
+                    end,
+                    S2 = S#state{lastpings = Q2, pings = Pings1},
+                    {next_state, running, S2};
+                _ ->
+                    lager:warning("got unsolicited ping reply? seq = %p",
+                        [Seq]),
+                    {next_state, running, S}
+            end;
+        {ok, TsPdu} ->
+            lager:warning("unhandled msgchan pdu: ~p", [rdpp:pretty_print(TsPdu)]),
+            {next_state, running, S};
+        _ ->
+            lager:warning("got invalid data on msgchan: ~p", [D]),
+            {next_state, running, S}
+    end;
+
+running(check_ping, S = #state{pings = Pings0,
+        mcs = #mcs_state{msgchan = MsgChan, us = Us}}) ->
+    Seq = random:uniform((1 bsl 16) - 1),
+    {ok, D} = rdpp:encode_basic(
+        #ts_autodetect_req{pdu = #rdp_rtt{seq = Seq}}),
+    Ret = rdp_server:send({self(), S}, #mcs_srv_data{
+        user = Us, channel = MsgChan, data = D}),
+    Now = erlang:system_time(microsecond),
+    case Ret of
+        ok ->
+            Pings1 = Pings0#{Seq => Now},
+            {next_state, running, S#state{pings = Pings1}};
+        {error, closed} ->
+            lager:debug("check_ping detected closed socket"),
+            running(close, S);
+        Err ->
+            lager:warning("check_ping error: ~p", [Err]),
+            {next_state, running, S}
+    end;
 
 running({send_redirect, Cookie, SessId, _Hostname},
         S = #state{shareid = ShareId,
@@ -977,6 +1052,9 @@ handle_info({'EXIT', Pid, Reason}, State,
             lager:debug("unwatched child ~p died: ~p", [Pid, Reason]),
             {next_state, State, S}
     end;
+
+handle_info(check_ping, State, S) ->
+    ?MODULE:State(check_ping, S);
 
 handle_info(Msg, State, S) ->
     lager:debug("unhandled message in state ~p: ~p", [State, Msg]),

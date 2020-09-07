@@ -102,3 +102,8 @@
 -record(ts_inpevt_mouse, {action=move, buttons=[], point}).
 -record(ts_inpevt_wheel, {clicks=0, point}).
 -record(ts_input, {events=[]}).
+
+-record(ts_autodetect_req, {flags=[], pdu}).
+-record(ts_autodetect_resp, {flags=[], pdu}).
+
+-record(rdp_rtt, {seq, type = postconnect}).

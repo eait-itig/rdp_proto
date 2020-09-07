@@ -37,7 +37,7 @@
     mcs_state/1, x224_state/1, get_tsuds/1, get_caps/1,
     get_canvas/1, get_redir_support/1, get_autologon/1,
     send_redirect/4, close/1, watch_child/2, get_peer/1,
-    send_vchan/3, get_vchan_pid/2
+    send_vchan/3, get_vchan_pid/2, get_pings/1
     ]).
 
 -type server() :: {pid(), #state{}}.
@@ -144,7 +144,9 @@ get_peer(Srv) ->
     #state{peer = Peer} = curstate(Srv),
     Peer.
 
-
+-spec get_pings(server()) -> {ok, [integer()]}.
+get_pings({Pid, _}) ->
+    gen_fsm:sync_send_event(Pid, get_pings).
 
 -spec get_canvas(server()) -> {Width :: integer(), Height :: integer(), Bpp :: integer()}.
 get_canvas(Srv) ->

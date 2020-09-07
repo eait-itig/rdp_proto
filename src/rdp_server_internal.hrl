@@ -49,4 +49,7 @@
     client_info :: undefined | #ts_info{},
     peer :: undefined | {inet:ip_address(), integer()},
     bpp :: undefined | integer(),
-    chanfsms = #{} :: #{mcs_chan() => {atom(), pid()}}}).
+    chanfsms = #{} :: #{mcs_chan() => {atom(), pid()}},
+    pingtimer :: undefined | reference(),
+    lastpings = queue:new() :: queue:queue(integer()),
+    pings = #{} :: #{integer() => integer()}}).
