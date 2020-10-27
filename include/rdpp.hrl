@@ -103,6 +103,9 @@
 -record(ts_inpevt_wheel, {clicks=0, point}).
 -record(ts_input, {events=[]}).
 
+-record(ts_session_info_logon, {domain, user, sessionid}).
+-record(ts_session_info_error, {status}).
+
 -record(ts_autodetect_req, {flags=[], pdu}).
 -record(ts_autodetect_resp, {flags=[], pdu}).
 

@@ -152,6 +152,7 @@ copied(cast, {pdu, #cliprdr_data_resp{flags = Flags, data = Data0}}, S0 = #?MODU
     S1 = S0#?MODULE{pasteq = Q1},
     case lists:member(ok, Flags) of
         false ->
+            lager:debug("cliprdr flags = ~p", [Flags]),
             gen_statem:reply(From, {error, paste_failed}),
             {keep_state, S1};
         true ->

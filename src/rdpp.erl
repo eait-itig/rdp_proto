@@ -105,6 +105,9 @@ pretty_print(Record) ->
 
 ?pp(ts_vchan);
 
+?pp(ts_session_info_logon);
+?pp(ts_session_info_error);
+
 ?pp(ts_autodetect_req);
 ?pp(ts_autodetect_resp);
 ?pp(rdp_rtt);
@@ -300,7 +303,7 @@ decode_sharecontrol(Bin, StripN) ->
             end;
         <<Length:16/little, Type:16/little, Chan:16/little, Rest/binary>> ->
             case <<Type:16/big>> of
-                <<_:7, 0:1, 1:4, InnerType:4>> ->
+                <<1:12/big, InnerType:4>> ->
                     RealLength = byte_size(Rest) + 6,
                     if RealLength == Length ->
                         case InnerType of
@@ -317,7 +320,7 @@ decode_sharecontrol(Bin, StripN) ->
                         {error, badlength}
                     end;
                 _ ->
-                    {error, bad_type}
+                    {error, {bad_type, Type}}
             end;
         _ ->
             {error, badpacket}
@@ -789,6 +792,7 @@ decode_sharedata(Chan, Bin) ->
                     40 -> decode_ts_fontmap(Rest);
                     28 -> decode_ts_input(Rest);
                     36 -> decode_ts_shutdown(Rest);
+                    38 -> decode_ts_session_info(Rest);
                     _ -> {PduType, Rest}
                 end,
                 {ok, #ts_sharedata{channel = Chan, shareid = ShareId, priority = Prio, flags = FlagAtoms, data = Inner}};
@@ -831,6 +835,56 @@ decode_ts_sync(Bin) ->
 
 encode_ts_sync(#ts_sync{user = User}) ->
     <<1:16/little, User:16/little>>.
+
+decode_ntstatus(16#FFFFFFFA) -> no_permission;
+decode_ntstatus(16#FFFFFFFB) -> session_bump;
+decode_ntstatus(16#FFFFFFFC) -> reconnect_options;
+decode_ntstatus(16#FFFFFFFD) -> terminate;
+decode_ntstatus(16#FFFFFFFE) -> continue;
+decode_ntstatus(16#FFFFFFFF) -> access_denied;
+decode_ntstatus(0) -> success;
+decode_ntstatus(Other) -> {other, Other}.
+
+decode_session_id(16#00000000) -> bad_password;
+decode_session_id(16#00000001) -> bad_password_update;
+decode_session_id(16#00000002) -> fail;
+decode_session_id(16#00000003) -> warning;
+decode_session_id(Other) -> Other.
+
+decode_ts_session_info(<<0:32/little, DomainLen:32/little, Domain:52/binary,
+        UserNameLen:32/little, UserName:512/binary, SessionId:32/little>>) ->
+    <<DomainCut:DomainLen/binary, _/binary>> = Domain,
+    <<UserNameCut:UserNameLen/binary, _/binary>> = UserName,
+    #ts_session_info_logon{user = UserNameCut, domain = DomainCut, sessionid = SessionId};
+decode_ts_session_info(<<1:32/little, 1:16/little, _TotalSize:32/little,
+        SessionId:32/little, DomainLen:32/little, UserNameLen:32/little,
+        _Pad:558/binary, Domain:DomainLen/binary, UserName:UserNameLen/binary>>) ->
+    #ts_session_info_logon{user = UserName, domain = Domain, sessionid = SessionId};
+decode_ts_session_info(<<2:32/little, _/binary>>) ->
+    #ts_session_info_logon{};
+decode_ts_session_info(<<3:32/little, TotalSize:16/little,
+        Rem0:(TotalSize - 2)/binary, _Pad/binary>>) ->
+    <<FieldMask:32/little, Rem1/binary>> = Rem0,
+    <<_:30, Errors:1, AutoReconnect:1>> = <<FieldMask:32/big>>,
+    Rem2 = case AutoReconnect of
+        1 ->
+            <<Len:32/little, _AutoReconInfo:Len/binary, Rest/binary>> = Rem1,
+            Rest;
+        0 ->
+            Rem1
+    end,
+    case Errors of
+        1 ->
+            <<8:32/little, NotifTypeRaw:32/little, SessionIdRaw:32/little>> = Rem2,
+            NotifType = decode_ntstatus(NotifTypeRaw),
+            SessionId = decode_session_id(SessionIdRaw),
+            #ts_session_info_error{status = {NotifType, SessionId}};
+        0 ->
+            <<>> = Rem2,
+            #ts_session_info_logon{}
+    end;
+decode_ts_session_info(<<N:32/little, _/binary>>) ->
+    error({unsupported_session_info, N}).
 
 decode_ts_control(Bin) ->
     <<Action:16/little, GrantId:16/little, ControlId:32/little>> = Bin,
