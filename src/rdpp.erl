@@ -863,8 +863,9 @@ decode_ts_session_info(<<1:32/little, 1:16/little, _TotalSize:32/little,
     #ts_session_info_logon{user = UserName, domain = Domain, sessionid = SessionId};
 decode_ts_session_info(<<2:32/little, _/binary>>) ->
     #ts_session_info_logon{};
-decode_ts_session_info(<<3:32/little, TotalSize:16/little,
-        Rem0:(TotalSize - 2)/binary, _Pad/binary>>) ->
+decode_ts_session_info(<<3:32/little, TotalSize:16/little, Rem/binary>>) ->
+    Rem0Size = TotalSize - 2,
+    <<Rem0:Rem0Size/binary, _Pad/binary>> = Rem,
     <<FieldMask:32/little, Rem1/binary>> = Rem0,
     <<_:30, Errors:1, AutoReconnect:1>> = <<FieldMask:32/big>>,
     Rem2 = case AutoReconnect of
