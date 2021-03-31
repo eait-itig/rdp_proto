@@ -106,6 +106,8 @@
 -record(ts_session_info_logon, {domain, user, sessionid}).
 -record(ts_session_info_error, {status}).
 
+-record(ts_set_error_info, {info}).
+
 -record(ts_autodetect_req, {flags=[], pdu}).
 -record(ts_autodetect_resp, {flags=[], pdu}).
 

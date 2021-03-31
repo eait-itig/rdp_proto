@@ -793,6 +793,7 @@ decode_sharedata(Chan, Bin) ->
                     28 -> decode_ts_input(Rest);
                     36 -> decode_ts_shutdown(Rest);
                     38 -> decode_ts_session_info(Rest);
+                    47 -> decode_ts_set_error_info(Rest);
                     _ -> {PduType, Rest}
                 end,
                 {ok, #ts_sharedata{channel = Chan, shareid = ShareId, priority = Prio, flags = FlagAtoms, data = Inner}};
@@ -885,6 +886,49 @@ decode_ts_session_info(<<3:32/little, TotalSize:16/little,
     end;
 decode_ts_session_info(<<N:32/little, _/binary>>) ->
     error({unsupported_session_info, N}).
+
+decode_ts_set_error_info(<<N:32/little>>) ->
+    Info = case N of
+        16#00000000 -> no_error;
+        16#00000001 -> {disconnect, admin};
+        16#00000002 -> {logoff, admin};
+        16#00000003 -> {logoff, idle};
+        16#00000004 -> {logoff, timelimit};
+        16#00000005 -> {disconnect, other_conn};
+        16#00000006 -> {error, out_of_memory};
+        16#00000007 -> {denied, server};
+        16#00000009 -> {denied, privileges};
+        16#0000000A -> {denied, stale_creds};
+        16#0000000B -> {disconnect, normal};
+        16#0000000C -> {logoff, normal};
+        16#0000000F -> {error, driver_timeout};
+        16#00000010 -> {error, dwm_crash};
+        16#00000011 -> {error, driver_crash};
+        16#00000012 -> {error, driver_iface};
+        16#00000017 -> {error, winlogon_crash};
+        16#00000018 -> {error, csrss_crash};
+        16#000010C9 -> {error, {sharedata, invalid_type}};
+        16#000010CA -> {error, {sharecontrol, invalid_type}};
+        16#000010CB -> {error, data_pdu_seq};
+        16#000010CD -> {error, control_pdu_seq};
+        16#000010CE -> {error, invalid_control_action};
+        16#000010CF -> {error, {input_pdu, invalid}};
+        16#000010D0 -> {error, {input_pdu, invalid_mouse}};
+        16#000010D1 -> {error, invalid_refresh_rect};
+        16#000010D2 -> {error, create_user_data_failed};
+        16#000010D3 -> {error, connect_failed};
+        16#000010D4 -> {error, {confirm_active, bad_shareid}};
+        16#000010D5 -> {error, {confirm_active, bad_originator}};
+        16#000010DE -> {error, {input_pdu, bad_length}};
+        16#000010E0 -> {error, short_security_data};
+        16#000010E1 -> {error, short_vchan_data};
+        16#000010E2 -> {error, {sharedata, bad_length}};
+        _ when (N >= 16#100) and (N =< 16#200) -> {license_error, N};
+        _ when (N >= 16#400) and (N =< 16#500) -> {conn_broker_error, N};
+        _ when (N >= 16#1000) and (N =< 16#2000) -> {error, N};
+        _ -> {unknown, N}
+    end,
+    #ts_set_error_info{info = Info}.
 
 decode_ts_control(Bin) ->
     <<Action:16/little, GrantId:16/little, ControlId:32/little>> = Bin,
