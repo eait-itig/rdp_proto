@@ -792,6 +792,7 @@ decode_sharedata(Chan, Bin) ->
                     40 -> decode_ts_fontmap(Rest);
                     28 -> decode_ts_input(Rest);
                     36 -> decode_ts_shutdown(Rest);
+                    37 -> decode_ts_shutdown_denied(Rest);
                     38 -> decode_ts_session_info(Rest);
                     47 -> decode_ts_set_error_info(Rest);
                     _ -> {PduType, Rest}
@@ -900,8 +901,8 @@ decode_ts_set_error_info(<<N:32/little>>) ->
         16#00000007 -> {denied, server};
         16#00000009 -> {denied, privileges};
         16#0000000A -> {denied, stale_creds};
-        16#0000000B -> {disconnect, normal};
-        16#0000000C -> {logoff, normal};
+        16#0000000B -> {disconnect, user_on_server};
+        16#0000000C -> {logoff, user_on_server};
         16#0000000F -> {error, driver_timeout};
         16#00000010 -> {error, dwm_crash};
         16#00000011 -> {error, driver_crash};
@@ -1117,6 +1118,10 @@ padding_only(Bin) ->
 decode_ts_shutdown(Bin) ->
     padding_only(Bin),
     #ts_shutdown{}.
+
+decode_ts_shutdown_denied(Bin) ->
+    padding_only(Bin),
+    #ts_shutdown_denied{}.
 
 decode_ts_input(Bin) ->
     <<N:16/little, _:16, Evts/binary>> = Bin,

@@ -115,6 +115,8 @@ decode_dpdu(Bin) ->
             {ok, #mcs_tir{user = UserId, token = Token}};
         {ok, {tokenInhibitConfirm, #'TokenInhibitConfirm'{initiator=UserId, tokenId=Token, result=Status, tokenStatus=TokenStatus}}, <<>>} ->
             {ok, #mcs_tic{user = UserId, token = Token, status = Status, token_status = TokenStatus}};
+        {ok, {disconnectProviderUltimatum, #'DisconnectProviderUltimatum'{reason=Reason}}} ->
+            {ok, #mcs_dpu{reason = Reason}};
         {ok, {Atom, _}, <<>>} ->
             {error, {nothandled, Atom}};
         Other ->
