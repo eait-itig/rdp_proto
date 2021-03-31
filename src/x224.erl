@@ -104,9 +104,10 @@ encode(Record) ->
 
             DynVcGfx = case lists:member(dynvc_gfx, Flags) of true -> 1; _ -> 0 end,
             ExtData = case lists:member(extdata, Flags) of true -> 1; _ -> 0 end,
-            Reserved1 = case lists:member(reserved1, Flags) of true -> 1; _ -> 0 end,
+            NegRspRsvd = case lists:member(negrsp_rsvd, Flags) of true -> 1; _ -> 0 end,
             RestrictedAdmin = case lists:member(restricted_admin, Flags) of true -> 1; _ -> 0 end,
-            <<Flags2:8>> = <<0:4, RestrictedAdmin:1, Reserved1:1, DynVcGfx:1, ExtData:1>>,
+            CredGuard = case lists:member(credguard, Flags) of true -> 1; _ -> 0 end,
+            <<Flags2:8>> = <<0:3, CredGuard:1, RestrictedAdmin:1, NegRspRsvd:1, DynVcGfx:1, ExtData:1>>,
 
             RdpPart = <<?RDP_NEGRSP:8, Flags2:8, 8:16/little, Prots:32/little>>,
 
@@ -156,11 +157,12 @@ decode(Data) ->
         <<_LI:8, ?PDU_CC:4, Cdt:4, DstRef:16/big, SrcRef:16/big, Class:4, 0:2, _ExtFmts:1, _ExFlow:1, Rest/binary>> ->
             case Rest of
                 <<?RDP_NEGRSP:8, Flags:8, _Length:16/little, Selected:32/little>> ->
-                    <<0:3, _Unused:1, RestrictedAdmin:1, NegRsp:1, DynVcGfx:1, ExtData:1>> = <<Flags:8>>,
+                    <<0:3, CredGuard:1, RestrictedAdmin:1, NegRsp:1, DynVcGfx:1, ExtData:1>> = <<Flags:8>>,
                     Flags2 = if DynVcGfx == 1 -> [dynvc_gfx]; true -> [] end ++
                              if ExtData == 1 -> [extdata]; true -> [] end ++
-                             if NegRsp == 1 -> [negrsp]; true -> [] end ++
-                             if RestrictedAdmin == 1 -> [restricted_admin]; true -> [] end,
+                             if NegRsp == 1 -> [negrsp_rsvd]; true -> [] end ++
+                             if RestrictedAdmin == 1 -> [restricted_admin]; true -> [] end ++
+                             if CredGuard == 1 -> [credguard]; true -> [] end,
 
                     Prots = rdpp:decode_protocol_flags(Selected),
                     {ok, #x224_cc{src = SrcRef, dst = DstRef, class = Class, cdt = Cdt, rdp_flags = Flags2, rdp_selected = Prots}};
