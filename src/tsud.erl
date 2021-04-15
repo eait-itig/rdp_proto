@@ -112,11 +112,11 @@ decode(Bin) ->
                         {ok, [?MODULE:Type(Data) | Others]}
                     end;
                 _ ->
-                    {error, bad_tsud}
+                    {error, {bad_tsud, DataLength, Rest}}
             end;
 
         _ ->
-            {error, bad_tsud}
+            {error, {bad_tsud, Bin}}
     end.
 
 encode(#tsud_core{} = Rec) -> {ok, encode_core(Rec)};
@@ -132,6 +132,7 @@ encode(#tsud_svr_security{} = Rec) -> {ok, encode_svr_security(Rec)};
 encode(#tsud_svr_net{} = Rec) -> {ok, encode_svr_net(Rec)};
 encode(#tsud_svr_msgchannel{} = Rec) -> {ok, encode_svr_msgchannel(Rec)};
 encode(#tsud_svr_multitransport{} = Rec) -> {ok, encode_svr_multitransport(Rec)};
+encode(#tsud_unknown{type = N, data = D}) -> {ok, encode_tsud(N, D)};
 encode(_) -> {error, bad_record}.
 
 encode_tsud(Type, Data) ->
@@ -353,13 +354,13 @@ encode_monitor(#tsud_monitor{monitors = Monitors}) ->
     MonitorBins = [encode_monitor_def(M) || M <- Monitors],
     Count = length(Monitors),
     Bins = [<<0:32, Count:32/little>> | MonitorBins],
-    iolist_to_binary(Bins).
+    encode_tsud(?CS_MONITOR, iolist_to_binary(Bins)).
 
 decode_msgchannel(_Data) ->
     #tsud_msgchannel{}.
 
 encode_msgchannel(#tsud_msgchannel{}) ->
-    <<0:32>>.
+    encode_tsud(?CS_MCS_MSGCHANNEL, <<0:32>>).
 
 decode_monitor_attrs(<<>>) -> [];
 decode_monitor_attrs(Bin) ->
@@ -385,7 +386,7 @@ encode_monitor_ex(#tsud_monitor_ex{monitors = Monitors}) ->
     MonBinSize = 20,
     Count = length(Monitors),
     Bins = [<<0:32, MonBinSize:32/little, Count:32/little>> | MonitorBins],
-    iolist_to_binary(Bins).
+    encode_tsud(?CS_MONITOR_EX, iolist_to_binary(Bins)).
 
 decode_multitransport(Data) ->
     <<Flags:32/little>> = Data,
@@ -402,7 +403,7 @@ encode_multitransport(#tsud_multitransport{flags = FlagAtoms}) ->
     UdpFec = case lists:member(udp_fec, FlagAtoms) of true -> 1; _ -> 0 end,
     SoftSync = case lists:member(softsync, FlagAtoms) of true -> 1; _ -> 0 end,
     <<Flags:32/big>> = <<0:22, SoftSync:1, UdpPref:1, 0:5, UdpFecLossy:1, 0:1, UdpFec:1>>,
-    <<Flags:32/little>>.
+    encode_tsud(?CS_MULTITRANSPORT, <<Flags:32/little>>).
 
 decode_svr_multitransport(Data) ->
     <<Flags:32/little>> = Data,
