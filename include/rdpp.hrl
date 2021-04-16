@@ -112,4 +112,7 @@
 -record(ts_autodetect_req, {flags=[], pdu}).
 -record(ts_autodetect_resp, {flags=[], pdu}).
 
+-record(ts_suppress_output, {allow_updates = true, rect = none}).
+-record(ts_refresh_rect, {rects = []}).
+
 -record(rdp_rtt, {seq, type = postconnect}).

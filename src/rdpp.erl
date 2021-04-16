@@ -791,6 +791,8 @@ decode_sharedata(Chan, Bin) ->
                     39 -> decode_ts_fontlist(Rest);
                     40 -> decode_ts_fontmap(Rest);
                     28 -> decode_ts_input(Rest);
+                    33 -> decode_ts_refresh_rect(Rest);
+                    35 -> decode_ts_suppress_output(Rest);
                     36 -> decode_ts_shutdown(Rest);
                     37 -> decode_ts_shutdown_denied(Rest);
                     38 -> decode_ts_session_info(Rest);
@@ -830,6 +832,19 @@ encode_sharedata(#ts_sharedata{shareid = ShareId, data = Pdu, priority = Prio, c
     CompSize = 0,
 
     <<ShareId:32/little, 0:8, Priority:8, Size:16/little, PduType:8, Flags:4, CompType:4, CompSize:16/little, Inner/binary>>.
+
+decode_ts_suppress_output(<<0, _:3/unit:8>>) ->
+    #ts_suppress_output{allow_updates = false, rect = none};
+decode_ts_suppress_output(<<1, _:3/unit:8,
+            L:16/little, T:16/little, R:16/little, B:16/little>>) ->
+    #ts_suppress_output{allow_updates = true, rect = {L, T, R, B}}.
+
+decode_ts_refresh_rect(<<N, _:3/unit:8, Rects/binary>>) ->
+    #ts_refresh_rect{rects = decode_rects(N, Rects)}.
+
+decode_rects(0, _) -> [];
+decode_rects(N, <<L:16/little, T:16/little, R:16/little, B:16/little, Rem/binary>>) ->
+    [{L, T, R, B} | decode_rects(N - 1, Rem)].
 
 decode_ts_sync(Bin) ->
     <<1:16/little, User:16/little>> = Bin,

@@ -862,10 +862,19 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             do_events(Evts, S);
 
         {ok, #ts_sharedata{shareid = ShareId, data =
+                D = #ts_suppress_output{}}} ->
+            do_events([D], S);
+
+        {ok, #ts_sharedata{shareid = ShareId, data =
+                D = #ts_refresh_rect{}}} ->
+            do_events([D], S);
+
+        {ok, #ts_sharedata{shareid = ShareId, data =
                 #ts_shutdown{}}} ->
             running(close, S);
 
-        {ok, #ts_sharedata{}} ->
+        {ok, #ts_sharedata{data = D}} ->
+            lager:debug("unhandled sharedata: ~p", [D]),
             {next_state, running, S};
 
         {ok, _RdpPkt} ->
