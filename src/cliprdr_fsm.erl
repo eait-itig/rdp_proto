@@ -92,7 +92,7 @@ startup(enter, _PrevState, #?MODULE{srv = Srv, chanid = ChanId}) ->
 startup(cast, {pdu, Pdu = #cliprdr_caps{caps = Caps}}, S0 = #?MODULE{srv = Srv}) ->
     S1 = S0#?MODULE{caps = Caps},
     {Pid, _} = Srv,
-    lager:debug("cliprdr caps for ~p: ~s", [Pid, cliprdr:pretty_print(Pdu)]),
+    _ = lager:debug("cliprdr caps for ~p: ~s", [Pid, cliprdr:pretty_print(Pdu)]),
     {keep_state, S1};
 
 startup(cast, {pdu, #cliprdr_format_list{formats = Fmts}}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
@@ -152,7 +152,7 @@ copied(cast, {pdu, #cliprdr_data_resp{flags = Flags, data = Data0}}, S0 = #?MODU
     S1 = S0#?MODULE{pasteq = Q1},
     case lists:member(ok, Flags) of
         false ->
-            lager:debug("cliprdr flags = ~p", [Flags]),
+            _ = lager:debug("cliprdr flags = ~p", [Flags]),
             gen_statem:reply(From, {error, paste_failed}),
             {keep_state, S1};
         true ->
@@ -172,7 +172,7 @@ copied(cast, {pdu, #cliprdr_data_resp{flags = Flags, data = Data0}}, S0 = #?MODU
 copied(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
     decode_vpdu(VPdu, S0).
 
-decode_vpdu(VPdu = #ts_vchan{flags = Fl, data = D}, S0 = #?MODULE{caps = Caps}) ->
+decode_vpdu(VPdu = #ts_vchan{flags = _Fl, data = D}, #?MODULE{caps = Caps}) ->
     case cliprdr:decode(D, Caps) of
         {ok, ClipPdu} ->
             %lager:debug("cliprdr: ~s", [cliprdr:pretty_print(ClipPdu)]),

@@ -42,13 +42,11 @@ start_link(Sock, Mod, Sup) ->
     gen_fsm:start_link(?MODULE, [Sock, Mod, Sup], []).
 
 init([LSock, {Mod, InitArgs}, Sup]) ->
-    random:seed(os:timestamp()),
     process_flag(trap_exit, true),
     {ok, accept, #state{mod = Mod, initargs = InitArgs, sup = Sup, lsock = LSock,
         chansavail=lists:seq(1002,1002+35)}, 0};
 
 init([LSock, Mod, Sup]) ->
-    random:seed(os:timestamp()),
     process_flag(trap_exit, true),
     {ok, accept, #state{mod = Mod, initargs = [], sup = Sup, lsock = LSock,
         chansavail=lists:seq(1002,1002+35)}, 0}.
@@ -119,8 +117,8 @@ initiation({x224_pdu, #x224_cr{class = 0, dst = 0} = Pkt},
 
 reject_cr(Reason, S = #state{sock = Sock, x224 = X224}) ->
     #x224_state{them = ThemRef} = X224,
-    lager:debug("~p rejecting cr, reason = ~p", [S#state.peer, Reason]),
-    UsRef = 1000 + random:uniform(1000),
+    _ = lager:debug("~p rejecting cr, reason = ~p", [S#state.peer, Reason]),
+    UsRef = 1000 + rand:uniform(1000),
     Resp = #x224_cc{src = UsRef, dst = ThemRef,
         rdp_status = error, rdp_error = Reason},
     {ok, RespData} = x224:encode(Resp),
@@ -133,7 +131,7 @@ reject_cr(Reason, S = #state{sock = Sock, x224 = X224}) ->
 accept_cr(SslOpts, S = #state{x224 = X224}) ->
     #x224_state{them = ThemRef} = X224,
 
-    UsRef = 1000 + random:uniform(1000),
+    UsRef = 1000 + rand:uniform(1000),
     Resp = #x224_cc{src = UsRef, dst = ThemRef,
         rdp_selected = [ssl],
         rdp_flags = [extdata, restricted_admin]},
@@ -149,10 +147,10 @@ start_tls(NextState, Packet, SslOpts,
     ok = inet:setopts(Sock, [{packet, raw}]),
     ok = gen_tcp:send(Sock, Packet),
 
-    Ciphers = [{A,B,C} || {A,B,C} <- ssl:cipher_suites(),
+    Ciphers = [{A,B,C} || {A,B,C} <- ssl:cipher_suites(all, 'tlsv1.2'),
         not (B =:= des_cbc), not (C =:= md5)],
 
-    Ret = ssl:ssl_accept(Sock,
+    Ret = ssl:handshake(Sock,
         [{ciphers, Ciphers}, {honor_cipher_order, true} | SslOpts]),
 
     case Ret of
@@ -161,7 +159,7 @@ start_tls(NextState, Packet, SslOpts,
             Proto = proplists:get_value(protocol, Info),
             Cipher = proplists:get_value(selected_cipher_suite, Info),
             SNIHost = proplists:get_value(sni_hostname, Info, none),
-            lager:info("~p: accepted tls ~p (cipher = ~p, sni = ~p)",
+            _ = lager:info("~p: accepted tls ~p (cipher = ~p, sni = ~p)",
                 [S#state.peer, Proto, Cipher, SNIHost]),
             ok = ssl:setopts(SslSock, [binary,
                 {active, true}, {nodelay, true}]),
@@ -172,7 +170,7 @@ start_tls(NextState, Packet, SslOpts,
             {stop, normal, S};
 
         {error, Err} ->
-            lager:debug("~p: tls error: ~p, dropping connection", [S#state.peer, Err]),
+            _ = lager:debug("~p: tls error: ~p, dropping connection", [S#state.peer, Err]),
             {stop, normal, S}
     end.
 
@@ -355,7 +353,7 @@ mcs_connect({mcs_pdu, #mcs_ci{} = McsCi},
 
 % nothing should really do this, but...
 mcs_connect({mcs_pdu, Pdu}, Data) ->
-    lager:warning("mcs_connect got: ~s", [mcsgcc:pretty_print(Pdu)]),
+    _ = lager:warning("mcs_connect got: ~s", [mcsgcc:pretty_print(Pdu)]),
     {next_state, mcs_connect, Data}.
 
 next_channel(S = #state{chansavail = [Next | Rest]}) ->
@@ -393,7 +391,7 @@ mcs_attach_user({mcs_pdu, #mcs_aur{}},
 
 mcs_attach_user({mcs_pdu, Pdu}, Data) ->
     % this is pretty weird and shouldn't happen
-    lager:warning("mcs_attach_user got: ~s", [mcsgcc:pretty_print(Pdu)]),
+    _ = lager:warning("mcs_attach_user got: ~s", [mcsgcc:pretty_print(Pdu)]),
     {next_state, mcs_attach_user, Data}.
 
 %% STATE: mcs_chans
@@ -415,7 +413,7 @@ mcs_chans({mcs_pdu, #mcs_cjr{user = Them, channel = Chan}},
 
     if
         (length(Remaining) == 0) ->
-            lager:debug("~p mcs_chans all ok (chans = ~p)", [
+            _ = lager:debug("~p mcs_chans all ok (chans = ~p)", [
                 S#state.peer, S2#state.mcs#mcs_state.chans]),
             {next_state, rdp_clientinfo, S2};
         true ->
@@ -432,13 +430,13 @@ mcs_chans({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
     #mcs_data{data = RdpData} = Pdu,
     case rdpp:decode_basic(RdpData) of
         {ok, #ts_info{}} ->
-            lager:debug("got ts_info while still waiting for chans (missing = ~p)", [Chans]),
+            _ = lager:debug("got ts_info while still waiting for chans (missing = ~p)", [Chans]),
             rdp_clientinfo({mcs_pdu, Pdu}, S);
         {ok, RdpPkt} ->
-            lager:warning("mcs_chans got: ~s", [rdpp:pretty_print(RdpPkt)]),
+            _ = lager:warning("mcs_chans got: ~s", [rdpp:pretty_print(RdpPkt)]),
             {next_state, mcs_chans, S};
         _ ->
-            lager:warning("mcs_chans got: ~s", [mcsgcc:pretty_print(Pdu)]),
+            _ = lager:warning("mcs_chans got: ~s", [mcsgcc:pretty_print(Pdu)]),
             {next_state, mcs_chans, S}
     end;
 
@@ -450,9 +448,9 @@ mcs_chans({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Them}},
     #mcs_data{data = RdpData} = Pdu,
     case rdpp:decode_basic(RdpData) of
         {ok, RdpPkt} ->
-            lager:debug("mcs_chans got on user chan: ~s", [rdpp:pretty_print(RdpPkt)]);
+            _ = lager:debug("mcs_chans got on user chan: ~s", [rdpp:pretty_print(RdpPkt)]);
         _ ->
-            lager:debug("mcs_chans got on user chan: ~s", [mcsgcc:pretty_print(Pdu)])
+            _ = lager:debug("mcs_chans got on user chan: ~s", [mcsgcc:pretty_print(Pdu)])
     end,
     {next_state, mcs_chans, S}.
 
@@ -585,7 +583,7 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
 
         {ok, RdpPkt} ->
             % what?
-            lager:warning("rdp packet: ~s", [rdpp:pretty_print(RdpPkt)]),
+            _ = lager:warning("rdp packet: ~s", [rdpp:pretty_print(RdpPkt)]),
             {next_state, rdp_clientinfo, S};
 
         Other ->
@@ -599,9 +597,9 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Them}},
     #mcs_data{data = RdpData} = Pdu,
     case rdpp:decode_basic(RdpData) of
         {ok, RdpPkt} ->
-            lager:debug("rdp_clientinfo got on user chan: ~s", [rdpp:pretty_print(RdpPkt)]);
+            _ = lager:debug("rdp_clientinfo got on user chan: ~s", [rdpp:pretty_print(RdpPkt)]);
         _ ->
-            lager:debug("rdp_clientinfo got on user chan: ~s", [mcsgcc:pretty_print(Pdu)])
+            _ = lager:debug("rdp_clientinfo got on user chan: ~s", [mcsgcc:pretty_print(Pdu)])
     end,
     {next_state, rdp_clientinfo, S}.
 
@@ -620,7 +618,7 @@ rdp_capex({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             % useful for accounting and debugging
             #ts_cap_general{os = OS, flags = Fl} = lists:keyfind(
                 ts_cap_general, 1, Caps),
-            lager:debug("client OS = ~p, flags = ~p", [OS, Fl]),
+            _ = lager:debug("client OS = ~p, flags = ~p", [OS, Fl]),
             {next_state, init_finalize, S#state{caps = Caps}};
 
         {ok, _RdpPkt} ->
@@ -633,7 +631,7 @@ rdp_capex({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
                 {ok, #ts_confirm{shareid = ShareId, capabilities = Caps}} ->
                     {next_state, init_finalize, S#state{caps = Caps}};
                 Wat2 ->
-                    lager:error("~p WAT: ~p => ~p then ~p", [S#state.peer, Pdu#mcs_data.data, Wat, Wat2]),
+                    _ = lager:error("~p WAT: ~p => ~p then ~p", [S#state.peer, Pdu#mcs_data.data, Wat, Wat2]),
                     % lolwut bro
                     {next_state, rdp_capex, S}
             end
@@ -761,7 +759,7 @@ running(get_pings, _From, S = #state{lastpings = Q}) ->
 running(close,
         S = #state{shareid = ShareId, sslsock = SslSock,
             mcs = #mcs_state{us = Us, iochan = IoChan}}) ->
-    lager:debug("sending deactivate and close"),
+    _ = lager:debug("sending deactivate and close"),
     {ok, Deact} = rdpp:encode_sharecontrol(
         #ts_deactivate{channel = Us, shareid = ShareId}),
 
@@ -802,21 +800,21 @@ running({mcs_pdu, #mcs_data{user = Them, channel = MsgChan, data = D}},
                     S2 = S#state{lastpings = Q2, pings = Pings1},
                     {next_state, running, S2};
                 _ ->
-                    lager:warning("got unsolicited ping reply? seq = %p",
+                    _ = lager:warning("got unsolicited ping reply? seq = %p",
                         [Seq]),
                     {next_state, running, S}
             end;
         {ok, TsPdu} ->
-            lager:warning("unhandled msgchan pdu: ~p", [rdpp:pretty_print(TsPdu)]),
+            _ = lager:warning("unhandled msgchan pdu: ~p", [rdpp:pretty_print(TsPdu)]),
             {next_state, running, S};
         _ ->
-            lager:warning("got invalid data on msgchan: ~p", [D]),
+            _ = lager:warning("got invalid data on msgchan: ~p", [D]),
             {next_state, running, S}
     end;
 
 running(check_ping, S = #state{pings = Pings0,
         mcs = #mcs_state{msgchan = MsgChan, us = Us}}) ->
-    Seq = random:uniform((1 bsl 16) - 1),
+    Seq = rand:uniform((1 bsl 16) - 1),
     {ok, D} = rdpp:encode_basic(
         #ts_autodetect_req{pdu = #rdp_rtt{seq = Seq}}),
     Ret = rdp_server:send({self(), S}, #mcs_srv_data{
@@ -827,10 +825,10 @@ running(check_ping, S = #state{pings = Pings0,
             Pings1 = Pings0#{Seq => Now},
             {next_state, running, S#state{pings = Pings1}};
         {error, closed} ->
-            lager:debug("check_ping detected closed socket"),
+            _ = lager:debug("check_ping detected closed socket"),
             running(close, S);
         Err ->
-            lager:warning("check_ping error: ~p", [Err]),
+            _ = lager:warning("check_ping error: ~p", [Err]),
             {next_state, running, S}
     end;
 
@@ -874,7 +872,7 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             running(close, S);
 
         {ok, #ts_sharedata{data = D}} ->
-            lager:debug("unhandled sharedata: ~p", [D]),
+            _ = lager:debug("unhandled sharedata: ~p", [D]),
             {next_state, running, S};
 
         {ok, _RdpPkt} ->
@@ -893,18 +891,18 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Chan}},
                         #{Chan := {Mod, Pid}} ->
                             ok = Mod:handle_pdu(Pid, VPkt);
                         _ ->
-                            lager:warning(
+                            _ = lager:warning(
                                 "unhandled data on vchannel ~p (~p): ~s",
                                 [Name, Chan, rdpp:pretty_print(VPkt)])
                     end,
                     {next_state, running, S};
                 _ ->
-                    lager:warning("got invalid data on vchannel ~p (~p): ~p", [Name, Chan, Data]),
+                    _ = lager:warning("got invalid data on vchannel ~p (~p): ~p", [Name, Chan, Data]),
                     {next_state, running, S}
             end;
 
         _ ->
-            lager:warning("got data on unknown vchannel ~p: ~p", [Chan, Data]),
+            _ = lager:warning("got data on unknown vchannel ~p: ~p", [Chan, Data]),
             {next_state, running, S}
     end;
 
@@ -992,7 +990,7 @@ handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S)
         {error, Reason} ->
             Name = rand_tmpname(),
             file:write_file(Name, Bin),
-            lager:warning("~p connseq decode fail in ~p: ~p (data saved in ~p)", [S#state.peer, State, Reason, Name]),
+            _ = lager:warning("~p connseq decode fail in ~p: ~p (data saved in ~p)", [S#state.peer, State, Reason, Name]),
             {next_state, State, S}
     end;
 handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S) ->
@@ -1003,7 +1001,7 @@ handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S) ->
         {error, Reason} ->
             Name = rand_tmpname(),
             file:write_file(Name, Bin),
-            lager:warning("~p decode fail in ~p: ~p (data saved in ~p)", [S#state.peer, State, Reason, Name]),
+            _ = lager:warning("~p decode fail in ~p: ~p (data saved in ~p)", [S#state.peer, State, Reason, Name]),
             {next_state, State, S}
     end;
 
@@ -1018,7 +1016,7 @@ handle_info({ssl_closed, Sock}, State, #state{sslsock = Sock} = S) ->
     case State of
         initiation -> ok;
         mcs_connect -> ok;
-        _ -> lager:debug("ssl closed by remote side")
+        _ -> _ = lager:debug("ssl closed by remote side")
     end,
     {stop, normal, S};
 
@@ -1026,7 +1024,7 @@ handle_info({ssl_error, Sock, Reason}, State, #state{sslsock = Sock} = S) ->
     case State of
         initiation -> ok;
         mcs_connect -> ok;
-        _ -> lager:debug("ssl error from remote side: ~p", [Reason])
+        _ -> _ = lager:debug("ssl error from remote side: ~p", [Reason])
     end,
     ssl:close(Sock),
     {stop, normal, S};
@@ -1035,7 +1033,7 @@ handle_info({tcp_closed, Sock}, State, #state{sock = Sock} = S) ->
     case State of
         initiation -> ok;
         mcs_connect -> ok;
-        _ -> lager:debug("tcp closed by remote side")
+        _ -> _ = lager:debug("tcp closed by remote side")
     end,
     {stop, normal, S};
 
@@ -1043,7 +1041,7 @@ handle_info({tcp_error, Sock, Reason}, State, #state{sock = Sock} = S) ->
     case State of
         initiation -> ok;
         mcs_connect -> ok;
-        _ -> lager:debug("tcp error from remote side: ~p", [Reason])
+        _ -> _ = lager:debug("tcp error from remote side: ~p", [Reason])
     end,
     gen_tcp:close(Sock),
     {stop, normal, S};
@@ -1052,13 +1050,13 @@ handle_info({'EXIT', Pid, Reason}, State,
         S = #state{watchkids = WKs, sslsock = SslSock}) ->
     case lists:member(Pid, WKs) of
         true ->
-            lager:debug("going down due to loss of watched child ~p: ~p", [Pid, Reason]),
-            lager:debug("sending dpu"),
+            _ = lager:debug("going down due to loss of watched child ~p: ~p", [Pid, Reason]),
+            _ = lager:debug("sending dpu"),
             _ = rdp_server:send({self(), S}, #mcs_dpu{}),
             ssl:close(SslSock),
             {stop, normal, S};
         false ->
-            lager:debug("unwatched child ~p died: ~p", [Pid, Reason]),
+            _ = lager:debug("unwatched child ~p died: ~p", [Pid, Reason]),
             {next_state, State, S}
     end;
 
@@ -1066,7 +1064,7 @@ handle_info(check_ping, State, S) ->
     ?MODULE:State(check_ping, S);
 
 handle_info(Msg, State, S) ->
-    lager:debug("unhandled message in state ~p: ~p", [State, Msg]),
+    _ = lager:debug("unhandled message in state ~p: ~p", [State, Msg]),
     {next_state, State, S}.
 
 handle_event({watch_child, Pid}, State,
@@ -1099,7 +1097,7 @@ terminate(Reason, State, S = #state{peer = P, mod = Mod, modstate = MS}) ->
         initiation -> ok;
         mcs_connect -> ok;
         _ ->
-            lager:debug("rdp_server_fsm terminating due to ~p, "
+            _ = lager:debug("rdp_server_fsm terminating due to ~p, "
                 "was connected to ~p in state ~p", [Reason, P, State])
     end,
     Mod:terminate({self(), S}, MS).

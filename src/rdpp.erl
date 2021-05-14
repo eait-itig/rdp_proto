@@ -296,7 +296,7 @@ decode_sharecontrol(Bin, StripN) ->
         <<N:32/little, Length:16/little, Rest/binary>> when StripN and ((N =:= 0) or (N =:= 48)) ->
             if
                 (byte_size(Rest) == Length - 2) ->
-                    lager:debug("sharecontrol stripping initial 4 bytes"),
+                    _ = lager:debug("sharecontrol stripping initial 4 bytes"),
                     decode_sharecontrol(<<Length:16/little, Rest/binary>>, false);
                 true ->
                     {error, bad_length}
@@ -313,7 +313,7 @@ decode_sharecontrol(Bin, StripN) ->
                             16#7 -> decode_sharedata(Chan, Rest);
                             16#a -> decode_ts_redir(Chan, Rest);
                             Type ->
-                                lager:warning("unhandled sharecontrol: ~p", [Type]),
+                                _ = lager:warning("unhandled sharecontrol: ~p", [Type]),
                                 {error, badpacket}
                         end;
                     true ->
@@ -1010,7 +1010,7 @@ encode_primary_ts_order(Type, Fields, Flags, Inner) ->
     ControlFlags = encode_ts_order_control_flags(Flags),
     % primary drawing orders use the crazy bit string to identify
     % which params are being given and which are not
-    FieldBits = ceil((length(Fields) + 1.0) / 8.0) * 8,
+    FieldBits = erlang:ceil((length(Fields) + 1.0) / 8.0) * 8,
     Shortfall = FieldBits - length(Fields),
     FieldShort = lists:foldl(fun(Next, Bin) ->
         <<Next:1, Bin/bitstring>>
@@ -1192,7 +1192,7 @@ decode_basic(Bin) ->
                 {autodetect_rsp, Fl} ->
                     {ok, #ts_autodetect_resp{pdu = decode_ts_ad(Fl, Rest)}};
                 {Type, Fl} ->
-                    lager:warning("unhandled basic: ~p, flags = ~p", [Type, Fl]),
+                    _ = lager:warning("unhandled basic: ~p, flags = ~p", [Type, Fl]),
                     {error, badpacket}
             end;
         _ ->
@@ -1262,7 +1262,7 @@ decode_ts_ext_info(Bin0, SoFar0 = #ts_info{}) ->
                             {ok, IP} = inet:parse_ipv6_address(AddrString),
                             {continue, [Rest, SoFar#ts_info{client_address = IP}]};
                         _ ->
-                            lager:warning("unhandled client address family: ~p (length ~p)", [Af, Len]),
+                            _ = lager:warning("unhandled client address family: ~p (length ~p)", [Af, Len]),
                             {continue, [Rest, SoFar]}
                     end;
                 _ ->
@@ -1331,7 +1331,7 @@ decode_ts_ext_info(Bin0, SoFar0 = #ts_info{}) ->
                     {continue, [Rest, SoFar]}
             end
         end,
-        fun(Bin, SoFar) ->
+        fun(_Bin, SoFar) ->
             {return, {ok, SoFar}}
         end
     ], [Bin0, SoFar0]).

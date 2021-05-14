@@ -96,7 +96,7 @@ send_vchan({Pid, #state{sslsock = Sock, mcs = Mcs}}, ChanId, VPdu) ->
     end.
 
 -spec get_vchan_pid(server(), atom()) -> {ok, pid()} | {error, term()}.
-get_vchan_pid({Pid, #state{chanfsms = Fsms}}, WantMod) ->
+get_vchan_pid({_Pid, #state{chanfsms = Fsms}}, WantMod) ->
     Matches = maps:fold(fun(_ChanId, {FsmMod, FsmPid}, Acc0) ->
         case FsmMod of
             WantMod -> [FsmPid | Acc0];
