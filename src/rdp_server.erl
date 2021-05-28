@@ -37,7 +37,8 @@
     mcs_state/1, x224_state/1, get_tsuds/1, get_caps/1,
     get_canvas/1, get_redir_support/1, get_autologon/1,
     send_redirect/4, close/1, watch_child/2, get_peer/1,
-    send_vchan/3, get_vchan_pid/2, get_pings/1
+    send_vchan/3, get_vchan_pid/2, get_pings/1, get_shell/1,
+    get_ts_info/1
     ]).
 
 -type server() :: {pid(), #state{}}.
@@ -63,6 +64,8 @@ mcs_state({_, #state{mcs = S}}) -> S.
 get_tsuds({_, #state{tsuds = Ts}}) -> Ts.
 -spec get_caps(server()) -> [ts_cap()].
 get_caps({_, #state{caps = Cs}}) -> Cs.
+-spec get_ts_info(server()) -> #ts_info{}.
+get_ts_info({_, #state{client_info = Intf}}) -> Inf.
 
 -spec send_raw(server(), binary()) -> ok | {error, term()}.
 send_raw(Srv, Bin) ->
@@ -199,6 +202,14 @@ get_autologon(Srv) ->
     P2 = if Unicode -> unicode:characters_to_binary(P1, {utf16,little}, utf8); not Unicode -> P1 end,
     [P3 | _] = binary:split(P2, <<0>>),
     {lists:member(autologon, Flags), U3, Do3, P3}.
+
+-spec get_shell(server()) -> binary().
+get_shell(Srv) ->
+    #state{client_info = TsInfo} = curstate(Srv),
+    #ts_info{shell = ShellRaw} = TsInfo,
+    ShellZero = unicode:characters_to_binary(ShellRaw, {utf16, little}),
+    [Shell | _] = binary:split(ShellZero, <<0>>),
+    Shell.
 
 -spec send_redirect(server(), Cookie :: binary(), SessId :: integer(), Hostname :: binary()) -> ok | {error, term()}.
 send_redirect({Pid, _}, Cookie, SessId, Hostname) ->
