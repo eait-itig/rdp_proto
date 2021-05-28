@@ -65,7 +65,7 @@ get_tsuds({_, #state{tsuds = Ts}}) -> Ts.
 -spec get_caps(server()) -> [ts_cap()].
 get_caps({_, #state{caps = Cs}}) -> Cs.
 -spec get_ts_info(server()) -> #ts_info{}.
-get_ts_info({_, #state{client_info = Intf}}) -> Inf.
+get_ts_info({_, #state{client_info = Inf}}) -> Inf.
 
 -spec send_raw(server(), binary()) -> ok | {error, term()}.
 send_raw(Srv, Bin) ->
