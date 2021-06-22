@@ -97,9 +97,9 @@ padding_only(Bin) ->
 decode_dpdu(Bin) ->
     case mcsp_per:decode('DomainMCSPDU', Bin) of
         {ok, {sendDataRequest, #'SendDataRequest'{initiator = User, channelId = Channel, dataPriority = Priority, userData = Data}}, <<>>} ->
-            {ok, #mcs_data{user = User, channel = Channel, priority = Priority, data = list_to_binary(Data)}};
+            {ok, #mcs_data{user = User, channel = Channel, priority = Priority, data = iolist_to_binary([Data])}};
         {ok, {sendDataIndication, #'SendDataIndication'{initiator = User, channelId = Channel, dataPriority = Priority, userData = Data}}, <<>>} ->
-            {ok, #mcs_srv_data{user = User, channel = Channel, priority = Priority, data = list_to_binary(Data)}};
+            {ok, #mcs_srv_data{user = User, channel = Channel, priority = Priority, data = iolist_to_binary([Data])}};
         {ok, {erectDomainRequest, #'ErectDomainRequest'{subHeight = Height, subInterval = Interval}}, <<>>} ->
             {ok, #mcs_edr{height = Height, interval = Interval}};
         {ok, {attachUserRequest, #'AttachUserRequest'{}}, Rem} ->
@@ -153,7 +153,7 @@ decode_ci(Bin) ->
                               max_size = Tgt#'DomainParameters'.maxHeight,
                               version = Tgt#'DomainParameters'.protocolVersion},
 
-            CDData = list_to_binary(CI#'Connect-Initial'.userData),
+            CDData = iolist_to_binary([CI#'Connect-Initial'.userData]),
             case gccp_per:decode('ConnectData', CDData) of
                 {ok, CD, CDRem} ->
                     % Ok, so this is one of the greatest bugs in this whole sorry affair:
@@ -165,14 +165,14 @@ decode_ci(Bin) ->
                         lager:warning("ci connectdata is carrying ~B extra bytes", [byte_size(CDRem)]);
                     true -> ok end,
 
-                    CPDUData = list_to_binary(CD#'ConnectData'.connectPDU),
+                    CPDUData = iolist_to_binary([CD#'ConnectData'.connectPDU]),
                     % Note we append the CDRem (if any) to the CPDUData here, see above
                     case gccp_per:decode('ConnectGCCPDU', <<CPDUData/binary, CDRem/binary>>) of
                         {ok, {conferenceCreateRequest, CCR}, <<>>} ->
                             NameRec = CCR#'ConferenceCreateRequest'.conferenceName,
                             % Duca is a magic string
                             [#'UserData_SETOF'{key={h221NonStandard, "Duca"}, value=ClientData}] = CCR#'ConferenceCreateRequest'.userData,
-                            {ok, Initial#mcs_ci{conf_name = NameRec#'ConferenceName'.numeric, data = list_to_binary(ClientData)}};
+                            {ok, Initial#mcs_ci{conf_name = NameRec#'ConferenceName'.numeric, data = iolist_to_binary([ClientData])}};
                         Other ->
                             Other
                     end;
@@ -199,7 +199,7 @@ decode_cr(Bin) ->
                               max_size = Tgt#'DomainParameters'.maxHeight,
                               version = Tgt#'DomainParameters'.protocolVersion},
 
-            CDData = list_to_binary(CR#'Connect-Response'.userData),
+            CDData = iolist_to_binary([CR#'Connect-Response'.userData]),
             case gccp_per:decode('ConnectData', CDData) of
                 {ok, CD, CDRem} ->
                     % See above, Microsoft's ASN.1 generator can produce the wrong length here
@@ -207,7 +207,7 @@ decode_cr(Bin) ->
                         lager:warning("cr connectdata is carrying ~B extra bytes", [byte_size(CDRem)]);
                     true -> ok end,
 
-                    CPDUData = list_to_binary(CD#'ConnectData'.connectPDU),
+                    CPDUData = iolist_to_binary([CD#'ConnectData'.connectPDU]),
                     % Note appending the CDRem here again
                     case gccp_per:decode('ConnectGCCPDU', <<CPDUData/binary,CDRem/binary>>) of
                         {ok, {conferenceCreateResponse, CCR}, <<>>} ->
@@ -216,7 +216,7 @@ decode_cr(Bin) ->
                             Result = CCR#'ConferenceCreateResponse'.result,
                             % McDn is the magic string for a Connect-Response
                             [#'UserData_SETOF'{key={h221NonStandard, "McDn"}, value=ClientData}] = CCR#'ConferenceCreateResponse'.userData,
-                            CDataBin = list_to_binary(ClientData),
+                            CDataBin = iolist_to_binary([ClientData]),
                             {ok, Initial#mcs_cr{node = Node, tag = Tag, result = Result, data = CDataBin}};
                         Other ->
                             Other
