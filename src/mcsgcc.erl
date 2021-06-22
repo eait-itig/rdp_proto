@@ -328,7 +328,8 @@ encode_cr(#mcs_cr{} = McsCr) ->
     {ok, CRData}.
 
 encode_ci(#mcs_ci{} = McsCI) ->
-    UserData = #'UserData_SETOF'{key = {h221NonStandard, "Duca"}, value = (McsCI#mcs_ci.data)},
+    UserData = #'UserData_SETOF'{key = {h221NonStandard, <<"Duca">>},
+                                 value = McsCI#mcs_ci.data},
     NameRec = #'ConferenceName'{numeric = McsCI#mcs_ci.conf_name},
     CCR = #'ConferenceCreateRequest'{conferenceName = NameRec,
                                      lockedConference = false,
