@@ -161,7 +161,7 @@ decode_ci(Bin) ->
                     % generates the wrong length on the GCC ConnectData, but appends the full
                     % payload anyway. If this happens, you have to strip it off here and append
                     % it to the inner payload and *then* try to parse it again.
-                    if byte_size(CDRem) > 0 ->
+                    _ = if byte_size(CDRem) > 0 ->
                         lager:warning("ci connectdata is carrying ~B extra bytes", [byte_size(CDRem)]);
                     true -> ok end,
 
@@ -203,7 +203,7 @@ decode_cr(Bin) ->
             case gccp_per:decode('ConnectData', CDData) of
                 {ok, CD, CDRem} ->
                     % See above, Microsoft's ASN.1 generator can produce the wrong length here
-                    if byte_size(CDRem) > 0 ->
+                    _ = if byte_size(CDRem) > 0 ->
                         lager:warning("cr connectdata is carrying ~B extra bytes", [byte_size(CDRem)]);
                     true -> ok end,
 
