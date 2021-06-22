@@ -151,10 +151,12 @@ decode_dpdu(Other, _) ->
 decode_dpdu(Bin) ->
     case mcsp_per:decode('DomainMCSPDU', Bin) of
         {ok, {Type, Rec}, Rem} ->
-            padding_only(Rem),
-            decode_dpdu(Type, Rec);
-        Other ->
-            Other
+            case Rem of
+                <<0:(bit_size(Rem))>> -> decode_dpdu(Type, Rec);
+                _ -> {error, {trailing_data, Type}}
+            end;
+        Err = {error, _} ->
+            Err
     end.
 
 
