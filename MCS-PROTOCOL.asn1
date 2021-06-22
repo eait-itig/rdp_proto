@@ -35,23 +35,23 @@ DataPriority ::= ENUMERATED {top(0), high(1), medium(2), low(3)}
 Segmentation ::= BIT STRING {begin(0), end(1)}(SIZE (2))
 
 DomainParameters ::= SEQUENCE {
-  maxChannelIds    INTEGER(0..MAX),
+  maxChannelIds    INTEGER, --(0..MAX),
   --  a limit on channel ids in use,
   --  static + user id + private + assigned
-  maxUserIds       INTEGER(0..MAX),
+  maxUserIds       INTEGER, --(0..MAX),
   --  a sublimit on user id channels alone
-  maxTokenIds      INTEGER(0..MAX),
+  maxTokenIds      INTEGER, --(0..MAX),
   --  a limit on token ids in use
   --  grabbed + inhibited + giving + ungivable + given
-  numPriorities    INTEGER(0..MAX),
+  numPriorities    INTEGER, --(0..MAX),
   --  the number of TCs in an MCS connection
-  minThroughput    INTEGER(0..MAX),
+  minThroughput    INTEGER, --(0..MAX),
   --  the enforced number of octets per second
-  maxHeight        INTEGER(0..MAX),
+  maxHeight        INTEGER, --(0..MAX),
   --  a limit on the height of a provider
-  maxMCSPDUsize    INTEGER(0..MAX),
+  maxMCSPDUsize    INTEGER, --(0..MAX),
   --  an octet limit on domain MCSPDUs
-  protocolVersion  INTEGER(0..MAX)
+  protocolVersion  INTEGER --(0..MAX)
 }
 
 --  Part 2: Connect provider

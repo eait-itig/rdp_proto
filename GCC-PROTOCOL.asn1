@@ -340,7 +340,7 @@ ATMConnection ::= SEQUENCE {
             -- this case is reserved for NSAPs only: the
             -- optional transport selector shall never be used
             nonStandard   NonStandardParameter},
-  maxTransferRate  INTEGER(0..MAX) OPTIONAL,
+  maxTransferRate  INTEGER OPTIONAL,
   -- in cells per seconds
   ...
 }
@@ -460,8 +460,8 @@ CapabilityID ::= CHOICE {
 
 CapabilityClass ::= CHOICE {
   logical      NULL,
-  unsignedMin  INTEGER(0..MAX), -- Capability value
-  unsignedMax  INTEGER(0..MAX), -- Capability value
+  unsignedMin  INTEGER, -- Capability value
+  unsignedMax  INTEGER, -- Capability value
   ...
 }
 

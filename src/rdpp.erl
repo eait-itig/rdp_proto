@@ -29,6 +29,8 @@
 
 -module(rdpp).
 
+-compile([{parse_transform, lager_transform}]).
+
 -include("kbd.hrl").
 -include("x224.hrl").
 -include("rdpp.hrl").

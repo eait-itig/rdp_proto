@@ -29,6 +29,8 @@
 
 -module(mcsgcc).
 
+-compile([{parse_transform, lager_transform}]).
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -71,7 +73,7 @@ decode_try_methods(Bin, Methods) ->
     case ?MODULE:Method(Bin) of
         {ok, Rec} -> {ok, Rec};
         _Error ->
-            %lager:debug("tried: ~p, got: ~p", [Method, Error]),
+            %lager:debug("tried: ~p, got: ~p\n", [Method, Error]),
             decode_try_methods(Bin, Rest)
     end.
 
@@ -94,47 +96,101 @@ padding_only(Bin) ->
     Sz = bit_size(Bin),
     <<0:Sz>> = Bin.
 
+decode_dpdu(sendDataRequest, #'SendDataRequest'{initiator = User,
+                                                channelId = Channel,
+                                                dataPriority = Priority,
+                                                userData = Data}) ->
+    {ok, #mcs_data{user = User, channel = Channel, priority = Priority,
+                   data = Data}};
+
+decode_dpdu(sendDataIndication, #'SendDataIndication'{initiator = User,
+                                                      channelId = Channel,
+                                                      dataPriority = Priority,
+                                                      userData = Data}) ->
+    {ok, #mcs_srv_data{user = User, channel = Channel, priority = Priority,
+                       data = Data}};
+
+decode_dpdu(erectDomainRequest, #'ErectDomainRequest'{subHeight = Height,
+                                                      subInterval = Interval}) ->
+    {ok, #mcs_edr{height = Height, interval = Interval}};
+
+decode_dpdu(attachUserRequest, #'AttachUserRequest'{}) ->
+    {ok, #mcs_aur{}};
+
+decode_dpdu(attachUserConfirm, #'AttachUserConfirm'{result = Result,
+                                                    initiator = UserId}) ->
+    {ok, #mcs_auc{status = Result, user = UserId}};
+
+decode_dpdu(channelJoinRequest, #'ChannelJoinRequest'{initiator = UserId,
+                                                      channelId = Channel}) ->
+    {ok, #mcs_cjr{user = UserId, channel = Channel}};
+
+decode_dpdu(channelJoinConfirm, #'ChannelJoinConfirm'{result = Result,
+                                                      initiator=UserId,
+                                                      requested=Channel}) ->
+    {ok, #mcs_cjc{user = UserId, status = Result, channel = Channel}};
+
+decode_dpdu(tokenInhibitRequest, #'TokenInhibitRequest'{initiator=UserId,
+                                                        tokenId=Token}) ->
+    {ok, #mcs_tir{user = UserId, token = Token}};
+
+decode_dpdu(tokenInhibitConfirm, #'TokenInhibitConfirm'{initiator=UserId,
+                                                        tokenId=Token,
+                                                        result=Status,
+                                                        tokenStatus=TokenStatus}) ->
+    {ok, #mcs_tic{user = UserId, token = Token, status = Status,
+                  token_status = TokenStatus}};
+
+decode_dpdu(disconnectProviderUltimatum,
+                        #'DisconnectProviderUltimatum'{reason=Reason}) ->
+    {ok, #mcs_dpu{reason = Reason}};
+
+decode_dpdu(Other, _) ->
+    {error, {unhandled_mcsp_dpdu, Other}}.
+
 decode_dpdu(Bin) ->
     case mcsp_per:decode('DomainMCSPDU', Bin) of
-        {ok, {sendDataRequest, #'SendDataRequest'{initiator = User, channelId = Channel, dataPriority = Priority, userData = Data}}, <<>>} ->
-            {ok, #mcs_data{user = User, channel = Channel, priority = Priority, data = iolist_to_binary([Data])}};
-        {ok, {sendDataIndication, #'SendDataIndication'{initiator = User, channelId = Channel, dataPriority = Priority, userData = Data}}, <<>>} ->
-            {ok, #mcs_srv_data{user = User, channel = Channel, priority = Priority, data = iolist_to_binary([Data])}};
-        {ok, {erectDomainRequest, #'ErectDomainRequest'{subHeight = Height, subInterval = Interval}}, <<>>} ->
-            {ok, #mcs_edr{height = Height, interval = Interval}};
-        {ok, {attachUserRequest, #'AttachUserRequest'{}}, Rem} ->
+        {ok, {Type, Rec}, Rem} ->
             padding_only(Rem),
-            {ok, #mcs_aur{}};
-        {ok, {attachUserConfirm, #'AttachUserConfirm'{result = Result, initiator = UserId}},<<>>} ->
-            {ok, #mcs_auc{status = Result, user = UserId}};
-        {ok, {channelJoinRequest, #'ChannelJoinRequest'{initiator = UserId, channelId = Channel}}, <<>>} ->
-            {ok, #mcs_cjr{user = UserId, channel = Channel}};
-        {ok, {channelJoinConfirm, #'ChannelJoinConfirm'{result = Result, initiator=UserId, requested=Channel}}, <<>>} ->
-            {ok, #mcs_cjc{user = UserId, status = Result, channel = Channel}};
-        {ok, {tokenInhibitRequest, #'TokenInhibitRequest'{initiator=UserId, tokenId=Token}}, <<>>} ->
-            {ok, #mcs_tir{user = UserId, token = Token}};
-        {ok, {tokenInhibitConfirm, #'TokenInhibitConfirm'{initiator=UserId, tokenId=Token, result=Status, tokenStatus=TokenStatus}}, <<>>} ->
-            {ok, #mcs_tic{user = UserId, token = Token, status = Status, token_status = TokenStatus}};
-        {ok, {disconnectProviderUltimatum, #'DisconnectProviderUltimatum'{reason=Reason}}} ->
-            {ok, #mcs_dpu{reason = Reason}};
-        {ok, {Atom, _}, <<>>} ->
-            {error, {nothandled, Atom}};
+            decode_dpdu(Type, Rec);
         Other ->
             Other
     end.
 
-encode_dpdu(#mcs_tic{user = UserId, token = Token, status = Status, token_status = TokenStatus}) ->
-    mcsp_per:encode('DomainMCSPDU', {tokenInhibitConfirm, #'TokenInhibitConfirm'{result = Status, tokenStatus = TokenStatus, initiator = UserId, tokenId = Token}});
+
+encode_dpdu(#mcs_tic{user = UserId, token = Token, status = Status,
+                     token_status = TokenStatus}) ->
+    mcsp_per:encode('DomainMCSPDU', {tokenInhibitConfirm,
+        #'TokenInhibitConfirm'{result = Status, tokenStatus = TokenStatus,
+                               initiator = UserId, tokenId = Token}});
+
 encode_dpdu(#mcs_auc{status = Result, user = UserId}) ->
-    mcsp_per:encode('DomainMCSPDU', {attachUserConfirm, #'AttachUserConfirm'{result = Result, initiator = UserId}});
+    mcsp_per:encode('DomainMCSPDU', {attachUserConfirm,
+        #'AttachUserConfirm'{result = Result, initiator = UserId}});
+
 encode_dpdu(#mcs_cjc{channel = Channel, status = Result, user = UserId}) ->
-    mcsp_per:encode('DomainMCSPDU', {channelJoinConfirm, #'ChannelJoinConfirm'{result = Result, initiator = UserId, requested = Channel, channelId = Channel}});
-encode_dpdu(#mcs_data{user = UserId, channel = Channel, priority = Priority, data = Binary}) ->
-    mcsp_per:encode('DomainMCSPDU', {sendDataRequest, #'SendDataRequest'{initiator = UserId, channelId = Channel, dataPriority = Priority, segmentation = 3, userData = Binary}});
-encode_dpdu(#mcs_srv_data{user = UserId, channel = Channel, priority = Priority, data = Binary}) ->
-    mcsp_per:encode('DomainMCSPDU', {sendDataIndication, #'SendDataIndication'{initiator = UserId, channelId = Channel, dataPriority = Priority, segmentation = 3, userData = Binary}});
+    mcsp_per:encode('DomainMCSPDU', {channelJoinConfirm,
+        #'ChannelJoinConfirm'{result = Result, initiator = UserId,
+                              requested = Channel, channelId = Channel}});
+
+encode_dpdu(#mcs_data{user = UserId, channel = Channel, priority = Priority,
+                      data = Binary}) ->
+    mcsp_per:encode('DomainMCSPDU', {sendDataRequest,
+        #'SendDataRequest'{initiator = UserId, channelId = Channel,
+                           dataPriority = Priority, segmentation = <<1:1, 1:1>>,
+                           userData = Binary}});
+
+encode_dpdu(#mcs_srv_data{user = UserId, channel = Channel,
+                          priority = Priority, data = Binary}) ->
+    mcsp_per:encode('DomainMCSPDU', {sendDataIndication,
+        #'SendDataIndication'{initiator = UserId, channelId = Channel,
+                              dataPriority = Priority, segmentation = <<1:1, 1:1>>,
+                              userData = Binary}});
+
 encode_dpdu(#mcs_dpu{reason = Reason}) ->
-    mcsp_per:encode('DomainMCSPDU', {disconnectProviderUltimatum, #'DisconnectProviderUltimatum'{reason = Reason}});
+    mcsp_per:encode('DomainMCSPDU', {disconnectProviderUltimatum,
+        #'DisconnectProviderUltimatum'{reason = Reason}});
+
 encode_dpdu(_) -> {error, bad_dpdu}.
 
 decode_ci(Bin) ->
@@ -154,6 +210,7 @@ decode_ci(Bin) ->
                               version = Tgt#'DomainParameters'.protocolVersion},
 
             CDData = iolist_to_binary([CI#'Connect-Initial'.userData]),
+            %lager:debug("cddata = ~p", [base64:encode(CDData)]),
             case gccp_per:decode('ConnectData', CDData) of
                 {ok, CD, CDRem} ->
                     % Ok, so this is one of the greatest bugs in this whole sorry affair:
@@ -169,17 +226,25 @@ decode_ci(Bin) ->
                     % Note we append the CDRem (if any) to the CPDUData here, see above
                     case gccp_per:decode('ConnectGCCPDU', <<CPDUData/binary, CDRem/binary>>) of
                         {ok, {conferenceCreateRequest, CCR}, <<>>} ->
-                            NameRec = CCR#'ConferenceCreateRequest'.conferenceName,
+                            #'ConferenceCreateRequest'{conferenceName = NameRec,
+                                                       userData = UD} = CCR,
                             % Duca is a magic string
-                            [#'UserData_SETOF'{key={h221NonStandard, "Duca"}, value=ClientData}] = CCR#'ConferenceCreateRequest'.userData,
-                            {ok, Initial#mcs_ci{conf_name = NameRec#'ConferenceName'.numeric, data = iolist_to_binary([ClientData])}};
+                            [#'UserData_SETOF'{key = {h221NonStandard, <<"Duca">>},
+                                               value=ClientData}] = UD,
+                            {ok, Initial#mcs_ci{
+                                conf_name = NameRec#'ConferenceName'.numeric,
+                                data = iolist_to_binary([ClientData])
+                            }};
                         Other ->
+                            %lager:debug("gccp_per failed: ~p", [Other]),
                             Other
                     end;
                 Other ->
+                    %lager:debug("gccp_per failed: ~p", [Other]),
                     Other
             end;
         Other ->
+            %lager:debug("mcsp_ber failed: ~p", [Other]),
             Other
     end.
 
@@ -211,17 +276,22 @@ decode_cr(Bin) ->
                     % Note appending the CDRem here again
                     case gccp_per:decode('ConnectGCCPDU', <<CPDUData/binary,CDRem/binary>>) of
                         {ok, {conferenceCreateResponse, CCR}, <<>>} ->
-                            Node = CCR#'ConferenceCreateResponse'.nodeID,
-                            Tag = CCR#'ConferenceCreateResponse'.tag,
-                            Result = CCR#'ConferenceCreateResponse'.result,
+                            #'ConferenceCreateResponse'{nodeID = Node,
+                                                        tag = Tag,
+                                                        result = Result,
+                                                        userData = UD} = CCR,
                             % McDn is the magic string for a Connect-Response
-                            [#'UserData_SETOF'{key={h221NonStandard, "McDn"}, value=ClientData}] = CCR#'ConferenceCreateResponse'.userData,
+                            [#'UserData_SETOF'{key = {h221NonStandard, <<"McDn">>},
+                                               value=ClientData}] = UD,
                             CDataBin = iolist_to_binary([ClientData]),
-                            {ok, Initial#mcs_cr{node = Node, tag = Tag, result = Result, data = CDataBin}};
+                            {ok, Initial#mcs_cr{node = Node, tag = Tag,
+                                                result = Result,
+                                                data = CDataBin}};
                         Other ->
                             Other
                     end;
                 Other ->
+                    %lager:debug("gccp_per failed: ~p", [Other]),
                     Other
             end;
         Other ->
@@ -229,10 +299,15 @@ decode_cr(Bin) ->
     end.
 
 encode_cr(#mcs_cr{} = McsCr) ->
-    UserData = #'UserData_SETOF'{key = {h221NonStandard, "McDn"}, value = binary_to_list(McsCr#mcs_cr.data)},
-    CCR = #'ConferenceCreateResponse'{nodeID = McsCr#mcs_cr.node, tag = McsCr#mcs_cr.tag, result = McsCr#mcs_cr.result, userData = [UserData]},
+    UserData = #'UserData_SETOF'{key = {h221NonStandard, <<"McDn">>},
+                                 value = (McsCr#mcs_cr.data)},
+    CCR = #'ConferenceCreateResponse'{nodeID = McsCr#mcs_cr.node,
+                                      tag = McsCr#mcs_cr.tag,
+                                      result = McsCr#mcs_cr.result,
+                                      userData = [UserData]},
     {ok, GccPdu} = gccp_per:encode('ConnectGCCPDU', {conferenceCreateResponse, CCR}),
-    CD = #'ConnectData'{connectPDU = binary_to_list(GccPdu)},
+    CD = #'ConnectData'{'t124Identifier' = {object, {0,0,20,124,0,1}},
+                        connectPDU = (GccPdu)},
     {ok, CDData} = gccp_per:encode('ConnectData', CD),
     Params = #'DomainParameters'{maxChannelIds = McsCr#mcs_cr.max_channels,
                                maxUserIds = McsCr#mcs_cr.max_users,
@@ -245,13 +320,13 @@ encode_cr(#mcs_cr{} = McsCr) ->
     CR = #'Connect-Response'{calledConnectId = McsCr#mcs_cr.called,
                              result = McsCr#mcs_cr.mcs_result,
                              domainParameters = Params,
-                             userData = binary_to_list(CDData)},
+                             userData = (CDData)},
     {ok, CRData} = mcsp_ber:encode('Connect-Response', CR),
 
     {ok, CRData}.
 
 encode_ci(#mcs_ci{} = McsCI) ->
-    UserData = #'UserData_SETOF'{key = {h221NonStandard, "Duca"}, value = binary_to_list(McsCI#mcs_ci.data)},
+    UserData = #'UserData_SETOF'{key = {h221NonStandard, "Duca"}, value = (McsCI#mcs_ci.data)},
     NameRec = #'ConferenceName'{numeric = McsCI#mcs_ci.conf_name},
     CCR = #'ConferenceCreateRequest'{conferenceName = NameRec,
                                      lockedConference = false,
@@ -260,7 +335,8 @@ encode_ci(#mcs_ci{} = McsCI) ->
                                      terminationMethod = automatic,
                                      userData = [UserData]},
     {ok, GccPdu} = gccp_per:encode('ConnectGCCPDU', {conferenceCreateRequest, CCR}),
-    CD = #'ConnectData'{connectPDU = binary_to_list(GccPdu)},
+    CD = #'ConnectData'{'t124Identifier' = {object, {0,0,20,124,0,1}},
+                        connectPDU = (GccPdu)},
     {ok, CDData} = gccp_per:encode('ConnectData', CD),
     TargetParams = #'DomainParameters'{maxChannelIds = McsCI#mcs_ci.max_channels,
                                        maxUserIds = McsCI#mcs_ci.max_users,
@@ -278,7 +354,7 @@ encode_ci(#mcs_ci{} = McsCI) ->
                             targetParameters = TargetParams,
                             minimumParameters = MinParams,
                             maximumParameters = MaxParams,
-                            userData = binary_to_list(CDData)},
+                            userData = (CDData)},
     {ok, CIData} = mcsp_ber:encode('Connect-Initial', CI),
 
     {ok, CIData}.

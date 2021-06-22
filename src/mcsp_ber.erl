@@ -8,12 +8,7 @@
 -include("mcsp.hrl").
 -asn1_info([{vsn,'5.0.16'},
             {module,'MCS-PROTOCOL'},
-            {options,[warnings,ber,errors,
- {cwd,"/home/alex/dev/rdp_proto"},
- {outdir,"/home/alex/dev/rdp_proto"},
- verbose,undec_rest,ber,
- {i,"."},
- {i,"/home/alex/dev/rdp_proto"}]}]).
+            {options,[ber,noobj,undec_rest,verbose,{i,"."},{i,".."}]}]).
 
 -export([encoding_rule/0,maps/0,bit_string_format/0,
          legacy_erlang_types/0]).
@@ -671,105 +666,49 @@ Tlv1 = match_tags(Tlv, TagIn),
 %% attribute maxChannelIds(1) with type INTEGER
 %%-------------------------------------------------
 [V1|Tlv2] = Tlv1, 
-Term1 = begin
-Val1 = decode_integer(V1, [2]),
-if 0 =< Val1, Val1 =< 'MAX' ->
-Val1;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+Term1 = decode_integer(V1, [2]),
 
 %%-------------------------------------------------
 %% attribute maxUserIds(2) with type INTEGER
 %%-------------------------------------------------
 [V2|Tlv3] = Tlv2, 
-Term2 = begin
-Val2 = decode_integer(V2, [2]),
-if 0 =< Val2, Val2 =< 'MAX' ->
-Val2;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+Term2 = decode_integer(V2, [2]),
 
 %%-------------------------------------------------
 %% attribute maxTokenIds(3) with type INTEGER
 %%-------------------------------------------------
 [V3|Tlv4] = Tlv3, 
-Term3 = begin
-Val3 = decode_integer(V3, [2]),
-if 0 =< Val3, Val3 =< 'MAX' ->
-Val3;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+Term3 = decode_integer(V3, [2]),
 
 %%-------------------------------------------------
 %% attribute numPriorities(4) with type INTEGER
 %%-------------------------------------------------
 [V4|Tlv5] = Tlv4, 
-Term4 = begin
-Val4 = decode_integer(V4, [2]),
-if 0 =< Val4, Val4 =< 'MAX' ->
-Val4;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+Term4 = decode_integer(V4, [2]),
 
 %%-------------------------------------------------
 %% attribute minThroughput(5) with type INTEGER
 %%-------------------------------------------------
 [V5|Tlv6] = Tlv5, 
-Term5 = begin
-Val5 = decode_integer(V5, [2]),
-if 0 =< Val5, Val5 =< 'MAX' ->
-Val5;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+Term5 = decode_integer(V5, [2]),
 
 %%-------------------------------------------------
 %% attribute maxHeight(6) with type INTEGER
 %%-------------------------------------------------
 [V6|Tlv7] = Tlv6, 
-Term6 = begin
-Val6 = decode_integer(V6, [2]),
-if 0 =< Val6, Val6 =< 'MAX' ->
-Val6;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+Term6 = decode_integer(V6, [2]),
 
 %%-------------------------------------------------
 %% attribute maxMCSPDUsize(7) with type INTEGER
 %%-------------------------------------------------
 [V7|Tlv8] = Tlv7, 
-Term7 = begin
-Val7 = decode_integer(V7, [2]),
-if 0 =< Val7, Val7 =< 'MAX' ->
-Val7;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+Term7 = decode_integer(V7, [2]),
 
 %%-------------------------------------------------
 %% attribute protocolVersion(8) with type INTEGER
 %%-------------------------------------------------
 [V8|Tlv9] = Tlv8, 
-Term8 = begin
-Val8 = decode_integer(V8, [2]),
-if 0 =< Val8, Val8 =< 'MAX' ->
-Val8;
-true ->
-exit({error,{asn1,bad_range}})
-end
-end,
+Term8 = decode_integer(V8, [2]),
 
 case Tlv9 of
 [] -> true;_ -> exit({error,{asn1, {unexpected,Tlv9}}}) % extra fields not allowed

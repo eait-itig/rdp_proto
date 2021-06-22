@@ -30,6 +30,8 @@
 -module(rdp_server_fsm).
 -behaviour(gen_fsm).
 
+-compile([{parse_transform, lager_transform}]).
+
 -include("rdp_server.hrl").
 -include("rdp_server_internal.hrl").
 
@@ -235,9 +237,10 @@ raw_mode(Event, S = #state{mod = Mod, modstate = MS}) ->
 %% on exit from this state. In the mcs_chans state later we wait
 %% for the client to join all of these channels.
 %%
-mcs_connect({x224_pdu, _}, Data) ->
+mcs_connect({x224_pdu, Pdu}, Data) ->
     % ignore any misc x224 pdus we get at this point (some buggy clients
     % will still send a few more)
+    lager:debug("got x224 pdu in mcs_connect: ~s", [x224:pretty_print(Pdu)]),
     {next_state, mcs_connect, Data};
 
 mcs_connect({mcs_pdu, #mcs_ci{} = McsCi},

@@ -29,6 +29,8 @@
 
 -module(cliprdr_fsm).
 
+-compile([{parse_transform, lager_transform}]).
+
 -behaviour(gen_statem).
 -behaviour(rdp_vchan_fsm).
 
