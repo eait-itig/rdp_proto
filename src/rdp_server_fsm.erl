@@ -39,19 +39,23 @@
 -export([accept/2, initiation/2, mcs_connect/2, mcs_attach_user/2, mcs_chans/2, rdp_clientinfo/2, rdp_capex/2, init_finalize/2, running/2, running/3, raw_mode/2, raw_mode/3]).
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3, terminate/3, code_change/4]).
 
+-define(start_timeout_ms, 30000).
+
 -spec start_link(Sock :: term(), Mod :: atom() | {atom(), [term()]}, Sup :: pid()) -> {ok, pid()}.
 start_link(Sock, Mod, Sup) ->
     gen_fsm:start_link(?MODULE, [Sock, Mod, Sup], []).
 
 init([LSock, {Mod, InitArgs}, Sup]) ->
     process_flag(trap_exit, true),
+    {ok, TRef} = timer:send_after(?start_timeout_ms, startup_timeout),
     {ok, accept, #state{mod = Mod, initargs = InitArgs, sup = Sup, lsock = LSock,
-        chansavail=lists:seq(1002,1002+35)}, 0};
+        chansavail=lists:seq(1002,1002+35), starttimer = TRef}, 0};
 
 init([LSock, Mod, Sup]) ->
     process_flag(trap_exit, true),
+    {ok, TRef} = timer:send_after(?start_timeout_ms, startup_timeout),
     {ok, accept, #state{mod = Mod, initargs = [], sup = Sup, lsock = LSock,
-        chansavail=lists:seq(1002,1002+35)}, 0}.
+        chansavail=lists:seq(1002,1002+35), starttimer = TRef}, 0}.
 
 accept(timeout, S = #state{mod = Mod, initargs = InitArgs0, sup = Sup, lsock = LSock}) ->
     % accept a new connection
@@ -654,7 +658,7 @@ init_finalize({fp_pdu, #fp_pdu{}}, S = #state{}) ->
     {next_state, init_finalize, S};
 
 init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
-        S = #state{shareid = ShareId, mod = Mod, modstate = MS,
+        S = #state{shareid = ShareId, mod = Mod, modstate = MS, starttimer = ST,
             mcs = #mcs_state{them = Them, us = Us, iochan = IoChan}}) ->
     case rdpp:decode_sharecontrol(Pdu#mcs_data.data) of
         {ok, #ts_sharedata{shareid = ShareId, data = #ts_sync{}}} ->
@@ -729,6 +733,7 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
                             {ok, T} = timer:send_interval(1000, check_ping),
                             S2#state{pingtimer = T}
                     end,
+                    timer:cancel(ST),
                     {next_state, running, S3};
                 {stop, Reason, MS2} ->
                     {stop, Reason, S#state{modstate = MS2}}
@@ -974,12 +979,11 @@ debug_print_data(Bin) ->
     end.
 -endif.
 
-rand_tmpname() ->
-    filename:join(["/tmp", binary:replace(
-        base64:encode(crypto:strong_rand_bytes(6)),
-        [<<"/">>], <<"_">>)]).
-
 %% @private
+handle_info(startup_timeout, State, S = #state{}) ->
+    _ = lager:debug("startup timeout (in ~p), closing", [State]),
+    {stop, normal, S};
+
 handle_info({tcp, Sock, Bin}, raw_mode, S = #state{sock = Sock}) ->
     raw_mode({data, Bin}, S);
 handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S)
@@ -991,9 +995,10 @@ handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S)
             queue_remainder(Sock, Rem),
             ?MODULE:State(Evt, S);
         {error, Reason} ->
-            Name = rand_tmpname(),
-            file:write_file(Name, Bin),
-            _ = lager:warning("~p connseq decode fail in ~p: ~p (data saved in ~p)", [S#state.peer, State, Reason, Name]),
+            _ = lager:warning("~p connseq decode fail in ~p: ~p", [S#state.peer, State, Reason]),
+            % the pre-TLS TCP socket is in active-once mode, so we need to
+            % re-arm it here or we will never get called again
+            inet:setopts(Sock, [{active, once}]),
             {next_state, State, S}
     end;
 handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S) ->
@@ -1002,9 +1007,7 @@ handle_info({tcp, Sock, Bin}, State, #state{sock = Sock} = S) ->
             queue_remainder(Sock, Rem),
             ?MODULE:State(Evt, S);
         {error, Reason} ->
-            Name = rand_tmpname(),
-            file:write_file(Name, Bin),
-            _ = lager:warning("~p decode fail in ~p: ~p (data saved in ~p)", [S#state.peer, State, Reason, Name]),
+            _ = lager:warning("~p decode fail in ~p: ~p", [S#state.peer, State, Reason]),
             {next_state, State, S}
     end;
 
