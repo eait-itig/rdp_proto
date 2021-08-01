@@ -110,6 +110,8 @@ initiation({x224_pdu, #x224_cr{class = 0, dst = 0} = Pkt},
                 {accept, SslOpts, MS2} ->
                     accept_cr(SslOpts, S2#state{modstate = MS2});
                 {accept_raw, MS2} ->
+                    #state{starttimer = ST} = S,
+                    timer:cancel(ST),
                     {next_state, raw_mode, S2#state{modstate = MS2}};
 
                 {reject, Reason, MS2} ->
