@@ -47,15 +47,13 @@ start_link(Sock, Mod, Sup) ->
 
 init([LSock, {Mod, InitArgs}, Sup]) ->
     process_flag(trap_exit, true),
-    {ok, TRef} = timer:send_after(?start_timeout_ms, startup_timeout),
     {ok, accept, #state{mod = Mod, initargs = InitArgs, sup = Sup, lsock = LSock,
-        chansavail=lists:seq(1002,1002+35), starttimer = TRef}, 0};
+        chansavail=lists:seq(1002,1002+35)}, 0};
 
 init([LSock, Mod, Sup]) ->
     process_flag(trap_exit, true),
-    {ok, TRef} = timer:send_after(?start_timeout_ms, startup_timeout),
     {ok, accept, #state{mod = Mod, initargs = [], sup = Sup, lsock = LSock,
-        chansavail=lists:seq(1002,1002+35), starttimer = TRef}, 0}.
+        chansavail=lists:seq(1002,1002+35)}, 0}.
 
 accept(timeout, S = #state{mod = Mod, initargs = InitArgs0, sup = Sup, lsock = LSock}) ->
     % accept a new connection
@@ -63,6 +61,8 @@ accept(timeout, S = #state{mod = Mod, initargs = InitArgs0, sup = Sup, lsock = L
 
     % start our replacement in the pool
     rdp_server_sup:start_frontend(Sup),
+
+    {ok, TRef} = timer:send_after(?start_timeout_ms, startup_timeout),
 
     % accept sock is in passive mode
     inet:setopts(Sock, [{packet, raw}, {active, once}, {nodelay, true}]),
@@ -75,10 +75,12 @@ accept(timeout, S = #state{mod = Mod, initargs = InitArgs0, sup = Sup, lsock = L
     case erlang:apply(Mod, init, InitArgs1) of
         {ok, ModState} ->
             {next_state, initiation, S#state{
-                sock = Sock, peer = Peer, modstate = ModState}};
+                sock = Sock, peer = Peer, modstate = ModState,
+                starttimer = TRef}};
         {stop, Reason, ModState} ->
             {stop, Reason, S#state{
-                sock = Sock, peer = Peer, modstate = ModState}}
+                sock = Sock, peer = Peer, modstate = ModState,
+                starttimer = TRef}}
     end.
 
 %% STATE: initiation
