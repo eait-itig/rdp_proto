@@ -34,6 +34,7 @@
 -include_lib("rdp_proto/include/rdpp.hrl").
 -include_lib("rdp_proto/include/fastpath.hrl").
 -include_lib("rdp_proto/include/cliprdr.hrl").
+-include_lib("rdp_proto/include/credssp.hrl").
 
 -type net_channel() :: #tsud_net_channel{}.
 
