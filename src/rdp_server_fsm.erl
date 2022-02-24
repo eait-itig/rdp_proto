@@ -419,7 +419,7 @@ mcs_chans({mcs_pdu, #mcs_cjr{user = Them, channel = Chan}},
     S2 = S#state{waitchans = Remaining},
 
     ok = rdp_server:send({self(), S},
-        #mcs_cjc{user = Us, channel = Chan,
+        #mcs_cjc{user = Them, channel = Chan,
             status = 'rt-successful'}),
 
     if
