@@ -154,14 +154,14 @@ accept_cr(SslOpts, S = #state{x224 = X224}) ->
 
 start_tls(NextState, Packet, SslOpts,
         S = #state{sock = Sock, sslsock = none}) ->
-    ok = inet:setopts(Sock, [{packet, raw}]),
+    ok = inet:setopts(Sock, [{packet, raw}, {active, false}]),
     ok = gen_tcp:send(Sock, Packet),
 
     Ciphers = [{A,B,C} || {A,B,C} <- ssl:cipher_suites(all, 'tlsv1.2'),
         not (B =:= des_cbc), not (C =:= md5)],
 
-    Ret = ssl:handshake(Sock,
-        [{ciphers, Ciphers}, {honor_cipher_order, true} | SslOpts]),
+    Ret = ssl:handshake(Sock, [binary, {active, true}, {nodelay, true},
+        {ciphers, Ciphers}, {honor_cipher_order, true} | SslOpts], 10000),
 
     case Ret of
         {ok, SslSock} ->
