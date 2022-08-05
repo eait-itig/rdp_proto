@@ -9,7 +9,6 @@
                   kernel,
                   stdlib,
                   ssl,
-                  lager,
                   crypto,
                   asn1
                  ]},
