@@ -1096,6 +1096,9 @@ start_vchan_fsms(S0 = #state{mcs = Mcs, chanfsms = Fsms0}) ->
             "cliprdr" ->
                 {ok, Pid} = cliprdr_fsm:start_link({self(), S0}, Id),
                 Acc0#{Id => {cliprdr_fsm, Pid}};
+            "rdpdr" ->
+                {ok, Pid} = rdpdr_fsm:start_link({self(), S0}, Id),
+                Acc0#{Id => {rdpdr_fsm, Pid}};
             _ -> Acc0
         end
     end, Fsms0, Chans),

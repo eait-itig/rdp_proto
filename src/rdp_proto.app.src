@@ -10,7 +10,8 @@
                   stdlib,
                   ssl,
                   crypto,
-                  asn1
+                  asn1,
+                  msrpce
                  ]},
   {mod, { rdp_proto_app, []}},
   {env, [

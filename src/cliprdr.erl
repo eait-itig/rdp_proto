@@ -31,6 +31,8 @@
 
 -include("cliprdr.hrl").
 
+-compile([{parse_transform, bitset_parse_transform}]).
+
 -export([pretty_print/1]).
 -export([encode/1, decode/2]).
 
@@ -53,7 +55,7 @@ pretty_print(Record) ->
 pretty_print(_, _) ->
     no.
 
--define(msg_flags, [{skip, 13}, ascii_names, fail, ok]).
+-bitset({msg_flags, [{skip, 13}, ascii_names, fail, ok]}).
 
 -type cliprdr_pdu() :: #cliprdr_monitor_ready{} | #cliprdr_format_list{} |
     #cliprdr_caps{} | #cliprdr_format_resp{}.
@@ -101,7 +103,7 @@ encode(#cliprdr_data_req{flags = Flags, format = Fmt}) ->
 encode(_) -> error(bad_record).
 
 encode(Type, FlagList, Data) ->
-    <<MsgFlags:16/big>> = rdpp:encode_bit_flags(sets:from_list(FlagList), ?msg_flags),
+    MsgFlags = encode_msg_flags(FlagList),
     Len = byte_size(Data),
     <<Type:16/little, MsgFlags:16/little, Len:32/little, Data/binary>>.
 
@@ -112,8 +114,8 @@ decode(<<MsgType:16/little, MsgFlags:16/little, Len:32/little, Data:Len/binary, 
     PadLen = 8 * byte_size(Pad),
     case Pad of
         <<0:PadLen>> ->
-            MsgFlagSet = rdpp:decode_bit_flags(<<MsgFlags:16/big>>, ?msg_flags),
-            decode(MsgType, MsgFlagSet, Caps, Data);
+            MsgFlagList = decode_msg_flags(MsgFlags),
+            decode(MsgType, MsgFlagList, Caps, Data);
         _ ->
             {error, bad_packet_padding}
     end;
@@ -121,7 +123,7 @@ decode(_, _) ->
     {error, bad_packet}.
 
 decode(16#0001, MsgFlags, _Caps, _Data) ->
-    {ok, #cliprdr_monitor_ready{flags = sets:to_list(MsgFlags)}};
+    {ok, #cliprdr_monitor_ready{flags = MsgFlags}};
 
 decode(16#0002, MsgFlags, Caps, Data) ->
     UseLongFormat = case lists:keyfind(cliprdr_cap_general, 1, Caps) of
@@ -132,15 +134,15 @@ decode(16#0002, MsgFlags, Caps, Data) ->
         UseLongFormat -> decode_long_format(Data);
         not UseLongFormat -> decode_short_format(Data)
     end,
-    {ok, #cliprdr_format_list{flags = sets:to_list(MsgFlags), formats = Formats}};
+    {ok, #cliprdr_format_list{flags = MsgFlags, formats = Formats}};
 
 decode(16#0005, MsgFlags, _Caps, Data) ->
-    {ok, #cliprdr_data_resp{flags = sets:to_list(MsgFlags), data = Data}};
+    {ok, #cliprdr_data_resp{flags = MsgFlags, data = Data}};
 
 decode(16#0007, MsgFlags, _Caps, Data) ->
     <<NSets:16/little, _:16, SetsBin/binary>> = Data,
     Caps = decode_caps_set(SetsBin, NSets),
-    {ok, #cliprdr_caps{flags = sets:to_list(MsgFlags), caps = Caps}};
+    {ok, #cliprdr_caps{flags = MsgFlags, caps = Caps}};
 
 decode(MsgType, _, _, _) ->
     {error, {unknown_type, MsgType}}.
@@ -228,7 +230,9 @@ encode_long_format({Id, Name}) ->
     NameBin = unicode:characters_to_binary(Name, {utf16, little}),
     <<Id:32/little, NameBin/binary, 0, 0>>.
 
--define(gencap_flags, [{skip, 26}, hugefile, locking, no_file_paths, files, long_names, skip]).
+-bitset({gencap_flags, [{skip, 26}, hugefile, locking, no_file_paths, files,
+    long_names, skip]}).
+
 decode_caps_set(_, 0) -> [];
 decode_caps_set(<<>>, N) when N > 0 -> error({expected_cap_set, N});
 decode_caps_set(<<Type:16/little, Len:16/little, Rest/binary>>, N) ->
@@ -237,14 +241,14 @@ decode_caps_set(<<Type:16/little, Len:16/little, Rest/binary>>, N) ->
     case Type of
         16#01 ->
             <<Version:32/little, Flags:32/little>> = Data,
-            FlagSet = rdpp:decode_bit_flags(<<Flags:32/big>>, ?gencap_flags),
-            [#cliprdr_cap_general{flags = sets:to_list(FlagSet), version = Version} |
+            FlagSet = decode_gencap_flags(Flags),
+            [#cliprdr_cap_general{flags = FlagSet, version = Version} |
                 decode_caps_set(Rem, N - 1)];
         _ -> error({unknown_cap_type, Type})
     end.
 
 encode_cap(#cliprdr_cap_general{flags = FlagList, version = Version}) ->
-    <<Flags:32/big>> = rdpp:encode_bit_flags(sets:from_list(FlagList), ?gencap_flags),
+    Flags = encode_gencap_flags(FlagList),
     Data = <<Version:32/little, Flags:32/little>>,
     Len = byte_size(Data) + 4,
     <<16#01:16/little, Len:16/little, Data/binary>>.
