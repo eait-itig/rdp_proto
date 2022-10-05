@@ -1385,7 +1385,7 @@ encode_ts_info(#ts_info{codepage = CodePage, flags = FlagAtoms, compression = Co
         I when is_integer(I) -> I
     end,
 
-    <<BeforeComp:19/bitstring, _:4, AfterComp:9/bitstring>> = encode_ts_info_flags(FlagAtoms),
+    <<BeforeComp:19/bitstring, _:4, AfterComp:9/bitstring>> = encode_ts_info_flags_bin(FlagAtoms),
     <<Flags:32/big>> = <<BeforeComp/bitstring, CompLevel:4, AfterComp/bitstring>>,
 
     NullSize = if Unicode == 1 -> 2; true -> 1 end,
