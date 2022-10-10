@@ -81,12 +81,19 @@ handle_event(#ts_inpevt_mouse{action = down}, Srv, S = #state{}) ->
         lager:debug("first reader is ~s", [Reader]),
         {ok, Mode, SC3} = rdpdr_scard:connect(Reader, shared, {t0_or_t1, optimal}, SC2),
         lager:debug("connected to ~p: ~p", [Reader, Mode]),
-        {ok, SC4} = rdpdr_scard:begin_txn(SC3),
-        {ok, Response, SC5} = rdpdr_scard:transceive(<<0,164,4,0,9,160,0,0,3,8,0,0,16,0>>, SC4),
-        lager:debug("response = ~p", [Response]),
-        {ok, SC6} = rdpdr_scard:end_txn(leave, SC5),
-        {ok, SC7} = rdpdr_scard:disconnect(leave, SC6),
-        ok = rdpdr_scard:close(SC7)
+        {ok, [Piv | _]} = apdu_stack:start_link(element(1, Mode),
+            [nist_piv, iso7816_chain, iso7816, {rdpdr_scard_apdu, [SC3]}]),
+
+        ok = apdu_transform:begin_transaction(Piv),
+        {ok, [Reply]} = apdu_transform:command(Piv, select),
+        lager:debug("reply = ~p", [Reply]),
+        {ok, [Chuid]} = apdu_transform:command(Piv, read_chuid),
+        lager:debug("chuid = ~p", [Chuid]),
+
+        {ok, _} = apdu_transform:end_transaction(Piv),
+
+        {ok, SC4} = rdpdr_scard:disconnect(leave, SC3),
+        ok = rdpdr_scard:close(SC4)
     end),
     {ok, S};
 
