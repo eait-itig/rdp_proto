@@ -187,7 +187,10 @@ caps_exchange(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
     decode_vpdu(VPdu, S0).
 
 await_devices(enter, _PrevState, S0 = #?MODULE{}) ->
-    keep_state_and_data;
+    % other side might not send any devices if they don't have any
+    % after a little wait, we will just start to process requests anyway
+    % (any late ones will get processed in running)
+    {keep_state_and_data, [{state_timeout, 500, timeout}]};
 
 await_devices({call, _}, _, #?MODULE{}) ->
     {keep_state_and_data, [postpone]};
@@ -213,6 +216,10 @@ await_devices(cast, {pdu, #rdpdr_device_announce{devices = Devs}},
         })
     end, lists:reverse(Replies)),
     {next_state, running, S0#?MODULE{devs = DevMap}};
+
+await_devices(state_timeout, timeout, S0 = #?MODULE{}) ->
+    lager:debug("no devices in >1s, probably none coming"),
+    {next_state, running, S0};
 
 await_devices(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
     decode_vpdu(VPdu, S0).
