@@ -300,8 +300,9 @@ decode(<<?RDPDR_CTYP_CORE:16/little, ?PAKID_CORE_CLIENT_NAME:16/little,
 decode(<<?RDPDR_CTYP_CORE:16/little, ?PAKID_CORE_SERVER_CAP:16/little,
          NumCaps:16/little, _Pad:16, CapsBin/binary>>) ->
     case decode_caps(CapsBin) of
-        {ok, Caps} when length(Caps) == NumCaps ->
-            {ok, #rdpdr_server_caps{caps = Caps}};
+        {ok, Caps0} when length(Caps0) >= NumCaps ->
+            Caps1 = lists:sublist(Caps0, NumCaps),
+            {ok, #rdpdr_server_caps{caps = Caps1}};
         {ok, Caps} ->
             {error, {bad_caps_length, length(Caps), NumCaps}};
         {error, _} = Err ->
@@ -310,8 +311,9 @@ decode(<<?RDPDR_CTYP_CORE:16/little, ?PAKID_CORE_SERVER_CAP:16/little,
 decode(<<?RDPDR_CTYP_CORE:16/little, ?PAKID_CORE_CLIENT_CAP:16/little,
          NumCaps:16/little, _Pad:16, CapsBin/binary>>) ->
     case decode_caps(CapsBin) of
-        {ok, Caps} when length(Caps) == NumCaps ->
-            {ok, #rdpdr_client_caps{caps = Caps}};
+        {ok, Caps0} when length(Caps0) >= NumCaps ->
+            Caps1 = lists:sublist(Caps0, NumCaps),
+            {ok, #rdpdr_client_caps{caps = Caps1}};
         {ok, Caps} ->
             {error, {bad_caps_length, length(Caps), NumCaps}};
         {error, _} = Err ->
