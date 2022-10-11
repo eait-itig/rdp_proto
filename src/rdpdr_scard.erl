@@ -180,7 +180,7 @@
     data :: pointer(varying_bin()),
     recv_pci = undefined :: pointer(#scardio_request{}),
     len_only = false :: long_boolean(),
-    recv_len = 65536 :: ulong()
+    recv_len = 1024 :: ulong()
     }).
 
 -record(transmit_return, {
@@ -305,7 +305,8 @@ decode_dispos(3) -> eject.
     devid :: rdpdr:dev_id(),
     scope :: scard_scope(),
     ctx :: #redir_scardcontext{},
-    hdl :: undefined | #redir_scardhandle{}
+    hdl :: undefined | #redir_scardhandle{},
+    proto :: undefined | protocol_id()
     }).
 
 -opaque state() :: #?MODULE{}.
@@ -391,13 +392,14 @@ list_readers(Group, S0 = #?MODULE{ctx = Ctx}) ->
 connect(Reader, ShareMode, ProtoId, S0 = #?MODULE{ctx = Ctx, hdl = undefined}) ->
     Common = #connect_common{ctx = Ctx, share_mode = ShareMode,
                              pref_protos = ProtoId},
-    Call = #connect_call{reader = Reader, common = Common},
+    Call = #connect_call{reader = Reader ++ [0], common = Common},
     IOC = ?SCARD_IOCTL_CONNECTW,
     Enc = fun encode_req_connect/1,
     Dec = fun decode_resp_connect/1,
     case do_ioctl(IOC, Call, Enc, Dec, S0) of
-        {ok, #connect_return{code = 0, handle = Hdl, proto = Proto}} ->
-            S1 = S0#?MODULE{hdl = Hdl},
+        {ok, #connect_return{code = 0, handle = Hdl0, proto = Proto}} ->
+            Hdl1 = Hdl0#redir_scardhandle{ctx = Ctx},
+            S1 = S0#?MODULE{hdl = Hdl1, proto = Proto},
             {ok, Proto, S1};
         {ok, #connect_return{code = ErrCode}} ->
             {error, {scard, ErrCode}};
@@ -453,7 +455,8 @@ end_txn(Dispos, S0 = #?MODULE{hdl = Hdl}) when not (Hdl =:= undefined) ->
 
 -spec transceive(apdu(), state()) -> {ok, apdu(), state()} | {error, term()}.
 transceive(DataIn, S0 = #?MODULE{hdl = Hdl}) when not (Hdl =:= undefined) ->
-    SendPCI = #scardio_request{proto = {t1, optimal}},
+    #?MODULE{proto = Proto} = S0,
+    SendPCI = #scardio_request{proto = Proto},
     Call = #transmit_call{handle = Hdl,
                           send_pci = SendPCI,
                           data = DataIn},

@@ -56,7 +56,8 @@
     client_name/3,
     caps_exchange/3,
     await_devices/3,
-    running/3
+    running/3,
+    broken/3
     ]).
 
 -spec start_link(rdp_server:server(), mcs_chan()) -> {ok, pid()} | {error, term()}.
@@ -108,10 +109,10 @@ terminate(_Reason, _State, #?MODULE{}) ->
 startup(enter, _PrevState, #?MODULE{srv = Srv, chanid = ChanId}) ->
     AnnData = rdpdr:encode(#rdpdr_srv_announce{}),
     ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
+        flags = [first, last],
         data = AnnData
     }),
-    keep_state_and_data;
+    {keep_state_and_data, [{state_timeout, 1000, timeout}]};
 
 startup({call, _}, _, #?MODULE{}) ->
     {keep_state_and_data, [postpone]};
@@ -121,8 +122,24 @@ startup(cast, {pdu, #rdpdr_clientid_confirm{clientid = CID}},
     S1 = S0#?MODULE{clientid = CID},
     {next_state, client_name, S1};
 
+startup(state_timeout, timeout, S0 = #?MODULE{}) ->
+    {next_state, broken, S0};
+
 startup(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
     decode_vpdu(VPdu, S0).
+
+broken(enter, _PrevState, #?MODULE{}) ->
+    {keep_state_and_data, [{state_timeout, 5000, retry}]};
+
+broken({call, From}, _Msg, #?MODULE{}) ->
+    gen_statem:reply(From, {error, rdpdr_init_timeout}),
+    keep_state_and_data;
+
+broken(state_timeout, retry, S0 = #?MODULE{}) ->
+    {next_state, startup, S0};
+
+broken(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
+    {keep_state_and_data, [postpone]}.
 
 client_name(enter, _PrevState, _S0 = #?MODULE{}) ->
     keep_state_and_data;
@@ -136,7 +153,7 @@ client_name(cast, {pdu, #rdpdr_client_name_req{name = ClientName}},
     S1 = S0#?MODULE{cname = ClientName},
     ConfirmData = rdpdr:encode(#rdpdr_clientid_confirm{clientid = CID}),
     ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
+        flags = [first, last],
         data = ConfirmData
     }),
     {next_state, caps_exchange, S1};
@@ -151,7 +168,7 @@ caps_exchange(enter, _PrevState, #?MODULE{srv = Srv, chanid = ChanId}) ->
     ],
     CapData = rdpdr:encode(#rdpdr_server_caps{caps = Caps}),
     ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
+        flags = [first, last],
         data = CapData
     }),
     keep_state_and_data;
@@ -191,7 +208,7 @@ await_devices(cast, {pdu, #rdpdr_device_announce{devices = Devs}},
     lists:foreach(fun (Reply) ->
         RepData = rdpdr:encode(Reply),
         ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-            flags = [first, last, show_protocol],
+            flags = [first, last],
             data = RepData
         })
     end, lists:reverse(Replies)),
@@ -225,7 +242,7 @@ running({call, From}, {open, DevId, Path, Access, Dispos}, S0 = #?MODULE{}) ->
     ReqData = rdpdr:encode(Req),
     #?MODULE{srv = Srv, chanid = ChanId} = S0,
     ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
+        flags = [first, last],
         data = ReqData
     }),
     Reqs1 = Reqs0#{ReqId => {From, Req}},
@@ -253,7 +270,7 @@ running({call, From}, {ioctl, DevId, Cmd, InData}, S0 = #?MODULE{}) ->
     ReqData = rdpdr:encode(Req),
     #?MODULE{srv = Srv, chanid = ChanId} = S0,
     ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
+        flags = [first, last],
         data = ReqData
     }),
     Reqs1 = Reqs0#{ReqId => {From, Req}},
@@ -291,6 +308,29 @@ running(cast, {pdu, R = #rdpdr_io_resp{io = IO}}, S0 = #?MODULE{reqs = Reqs0}) -
             keep_state_and_data
     end;
 
+running(cast, {pdu, #rdpdr_device_announce{devices = Devs}},
+                                S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
+    #?MODULE{devs = DevMap0} = S0,
+    {Replies, DevMap1} = lists:foldl(fun
+        (D = #rdpdr_dev_smartcard{id = Id}, {Rep0, Map0}) ->
+            Rep1 = [#rdpdr_device_reply{id = Id,
+                status = ntstatus:code_to_int('STATUS_SUCCESS')} | Rep0],
+            Map1 = Map0#{Id => D},
+            {Rep1, Map1};
+        (D, {Rep0, Map0}) when is_tuple(D) and is_atom(element(1,D)) ->
+            Rep1 = [#rdpdr_device_reply{id = element(2,D),
+                status = ntstatus:code_to_int('STATUS_BAD_FILE_TYPE')} | Rep0],
+            {Rep1, Map0}
+    end, {[], DevMap0}, Devs),
+    lists:foreach(fun (Reply) ->
+        RepData = rdpdr:encode(Reply),
+        ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
+            flags = [first, last],
+            data = RepData
+        })
+    end, lists:reverse(Replies)),
+    {keep_state, S0#?MODULE{devs = DevMap1}};
+
 running(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
     decode_vpdu(VPdu, S0).
 
@@ -304,7 +344,10 @@ next_req_id(N, Reqs) ->
     end.
 
 decode_vpdu(VPdu = #ts_vchan{flags = _Fl, data = D}, #?MODULE{}) ->
-    case rdpdr:decode(D) of
+    case (catch rdpdr:decode(D)) of
+        {'EXIT', Why} ->
+            lager:debug("rdpdr decode fail: ~p (~s)", [Why, rdpp:pretty_print(VPdu)]),
+            keep_state_and_data;
         {ok, ClipPdu} ->
             %lager:debug("rdpdr: ~s", [rdpdr:pretty_print(ClipPdu)]),
             {keep_state_and_data, [{next_event, cast, {pdu, ClipPdu}}]};

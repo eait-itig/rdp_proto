@@ -290,7 +290,7 @@ decode(<<?RDPDR_CTYP_CORE:16/little, ?PAKID_CORE_CLIENTID_CONFIRM:16/little,
 decode(<<?RDPDR_CTYP_CORE:16/little, ?PAKID_CORE_CLIENT_NAME:16/little,
         UnicodeFlag:32/little, _CodePage:32/little, NameLen:32/little,
         NameBin:NameLen/binary>>) ->
-    Name = case UnicodeFlag of
+    Name = case (UnicodeFlag band 1) of
         1 -> unicode:characters_to_list(NameBin, {utf16, little});
         0 -> unicode:characters_to_list(NameBin, utf8)
     end,
@@ -458,7 +458,7 @@ decode_one_cap(?CAP_PRINTER_TYPE, 1, _) ->
 decode_one_cap(?CAP_PORT_TYPE, 1, _) ->
     {ok, #rdpdr_cap_port{}};
 
-decode_one_cap(?CAP_DRIVE_TYPE, 2, _) ->
+decode_one_cap(?CAP_DRIVE_TYPE, _, _) ->
     {ok, #rdpdr_cap_drive{}};
 
 decode_one_cap(?CAP_SMARTCARD_TYPE, 1, _) ->
