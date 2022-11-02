@@ -38,6 +38,9 @@
 -export([encode_core/1, encode_cluster/1, encode_security/1, encode_net/1]).
 -export([encode_monitor_def/1]).
 
+-type bpp() :: '4bpp' | '8bpp' | '16bpp' | '16bpp' | '24bpp' | '32bpp'.
+-export_type([bpp/0]).
+
 -define(pp(Rec),
 pretty_print(Rec, N) ->
     N = record_info(size, Rec) - 1,

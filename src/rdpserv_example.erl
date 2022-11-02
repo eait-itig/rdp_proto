@@ -40,7 +40,8 @@
     handle_connect/4,
     init_ui/2,
     handle_event/3,
-    terminate/2
+    terminate/2,
+    choose_format/3
     ]).
 
 -record(state, {}).
@@ -53,11 +54,18 @@ handle_connect(Cookie, Protocols, Srv, S = #state{}) ->
     {accept, [{certfile, "etc/cert.pem"}, {keyfile, "etc/key.pem"}], S}.
     % SslOptions should probably contain at least [{certfile, ...}, {keyfile, ...}]
 
+choose_format(Preferred, Supported, S = #state{}) ->
+    lager:debug("using color format ~p out of ~p", [Preferred, Supported]),
+    {Preferred, S}.
+
 init_ui(Srv, S = #state{}) ->
     % draw your initial ui here, eg:
+    {W, H, Bpp} = rdp_server:get_canvas(Srv),
     ok = rdp_server:send_update(Srv, #ts_update_orders{orders = [
             #ts_order_opaquerect{
-                dest = {0,0}, size = {100,100},
+                dest = {round(W/2 - 50), round(H/2 - 50)},
+                size = {100,100},
+                bpp = Bpp,
                 color = {100, 0, 0}  % red,green,blue 0-255
             }
         ]}),
@@ -71,29 +79,32 @@ handle_event(#ts_inpevt_mouse{point = {X,Y}, action=move}, Srv, S = #state{}) ->
 handle_event(#ts_inpevt_mouse{action = down}, Srv, S = #state{}) ->
     {ok, D} = rdp_server:get_vchan_pid(Srv, rdpdr_fsm),
     spawn_link(fun () ->
-        {ok, [#rdpdr_dev_smartcard{id = DevId}]} = rdpdr_fsm:get_devices(D),
+        case rdpdr_fsm:get_devices(D) of
+            {ok, [#rdpdr_dev_smartcard{id = DevId}]} ->
+                {ok, SC0} = rdpdr_scard:open(D, DevId, system),
+                {ok, Groups, SC1} = rdpdr_scard:list_groups(SC0),
+                [Group0 | _] = Groups,
+                {ok, Readers, SC2} = rdpdr_scard:list_readers(Group0, SC1),
+                [Reader | _] = Readers,
+                lager:debug("first reader is ~s", [Reader]),
+                {ok, Mode, SC3} = rdpdr_scard:connect(Reader, shared, {t0_or_t1, optimal}, SC2),
+                lager:debug("connected to ~p: ~p", [Reader, Mode]),
+                {ok, [Piv | _]} = apdu_stack:start_link(element(1, Mode),
+                    [nist_piv, iso7816_chain, iso7816, {rdpdr_scard_apdu, [SC3]}]),
 
-        {ok, SC0} = rdpdr_scard:open(D, DevId, system),
-        {ok, Groups, SC1} = rdpdr_scard:list_groups(SC0),
-        [Group0 | _] = Groups,
-        {ok, Readers, SC2} = rdpdr_scard:list_readers(Group0, SC1),
-        [Reader | _] = Readers,
-        lager:debug("first reader is ~s", [Reader]),
-        {ok, Mode, SC3} = rdpdr_scard:connect(Reader, shared, {t0_or_t1, optimal}, SC2),
-        lager:debug("connected to ~p: ~p", [Reader, Mode]),
-        {ok, [Piv | _]} = apdu_stack:start_link(element(1, Mode),
-            [nist_piv, iso7816_chain, iso7816, {rdpdr_scard_apdu, [SC3]}]),
+                ok = apdu_transform:begin_transaction(Piv),
+                {ok, [Reply]} = apdu_transform:command(Piv, select),
+                lager:debug("reply = ~p", [Reply]),
+                {ok, [Chuid]} = apdu_transform:command(Piv, read_chuid),
+                lager:debug("chuid = ~p", [Chuid]),
 
-        ok = apdu_transform:begin_transaction(Piv),
-        {ok, [Reply]} = apdu_transform:command(Piv, select),
-        lager:debug("reply = ~p", [Reply]),
-        {ok, [Chuid]} = apdu_transform:command(Piv, read_chuid),
-        lager:debug("chuid = ~p", [Chuid]),
+                {ok, _} = apdu_transform:end_transaction(Piv),
 
-        {ok, _} = apdu_transform:end_transaction(Piv),
-
-        {ok, SC4} = rdpdr_scard:disconnect(leave, SC3),
-        ok = rdpdr_scard:close(SC4)
+                {ok, SC4} = rdpdr_scard:disconnect(leave, SC3),
+                ok = rdpdr_scard:close(SC4);
+            _ ->
+                lager:debug("no scard")
+        end
     end),
     {ok, S};
 

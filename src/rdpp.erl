@@ -997,11 +997,17 @@ encode_primary_ts_order(Type, Fields, Flags, Inner) ->
 
 encode_ts_order(#ts_order_opaquerect{flags = Flags, dest={X,Y}, size={W,H}, color={R,G,B}, bpp = Bpp}) ->
     Colour = case Bpp of
-        24 -> <<R:8,G:8,B:8>>;
-        16 -> <<C:16/big>> = <<R:5,G:6,B:5>>, <<C:24/little>>;
-        15 -> <<C:16/big>> = <<R:5,G:5,B:5,0:1>>, <<C:24/little>>
+        24 ->
+            <<R:8,G:8,B:8>>;
+        16 ->
+            <<C:16/big>> = <<(R bsr 3):5,(G bsr 2):6,(B bsr 3):5>>,
+            <<C:24/little>>;
+        15 ->
+            <<C:16/big>> = <<0:1,(R bsr 3):5,(G bsr 3):5,(B bsr 3):5>>,
+            <<C:24/little>>
     end,
-    Inner = <<X:16/little-signed, Y:16/little-signed, W:16/little-signed, H:16/little-signed, Colour/bitstring>>,
+    Inner = <<X:16/little-signed, Y:16/little-signed, W:16/little-signed,
+              H:16/little-signed, Colour/bitstring>>,
     encode_primary_ts_order(16#0a, [1,1,1,1,1,1,1], Flags, Inner);
 
 encode_ts_order(#ts_order_srcblt{flags = Flags, dest = {X1,Y1}, src = {X2, Y2}, size = {W,H}, rop = Rop}) ->

@@ -487,16 +487,33 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
 
             % now, work out the colour depth we're going to use
             Core = #tsud_core{} = lists:keyfind(tsud_core, 1, S#state.tsuds),
-            {Bpp,Format} = case Core#tsud_core.color of
-                % if they ask explicitly for 16bpp, give it to them
-                '16bpp' -> {16, '16bpp'};
-                _ ->
-                    % otherwise, if they support 24bpp we use that,
-                    % falling back to 16 if they don't
-                    case lists:member('24bpp', Core#tsud_core.colors) of
-                        true -> {24, '24bpp'};
-                        false -> {16, '16bpp'}
+            #state{mod = Mod, modstate = MS0} = S,
+            % if the callback module wants to choose, use that
+            Format = case erlang:function_exported(Mod, choose_format, 3) of
+                true ->
+                    {F, MS1} = Mod:choose_format(Core#tsud_core.color,
+                        Core#tsud_core.colors, MS0),
+                    F;
+                false ->
+                    MS1 = MS0,
+                    % if they requested 16bpp explicitly, use it
+                    case Core#tsud_core.color of
+                        '16bpp' -> '16bpp';
+                        _ ->
+                            % otherwise try either 24bpp or 16bpp
+                            case lists:member('24bpp', Core#tsud_core.colors) of
+                                true -> '24bpp';
+                                false -> '16bpp'
+                            end
                     end
+            end,
+            Bpp = case Format of
+                '4bpp' -> 4;
+                '8bpp' -> 8;
+                '15bpp' -> 15;
+                '16bpp' -> 16;
+                '24bpp' -> 24;
+                '32bpp' -> 32
             end,
             % crash if the format we're trying to choose isn't on
             % the client's supported list
@@ -590,7 +607,8 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
 
             % now we proceed to the final capabilities exchange
             {next_state, rdp_capex, S#state{
-                shareid = ShareId, client_info = InfoPkt, bpp = Bpp}};
+                shareid = ShareId, client_info = InfoPkt, bpp = Bpp,
+                modstate = MS1}};
 
         {ok, RdpPkt} ->
             % what?

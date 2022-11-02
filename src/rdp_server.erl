@@ -50,6 +50,8 @@
 
 -callback init_ui(Server :: server(), State :: term()) -> {ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
+-callback choose_format(Req :: tsud:bpp(), Supported :: [tsud:bpp()], State :: term()) -> {tsud:bpp(), NewState :: term()}.
+
 -callback handle_event(Event :: term(), Server :: server(), State :: term()) -> {ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
 -callback handle_raw_data(Data :: binary(), Server :: server(), State :: term()) -> {ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
