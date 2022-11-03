@@ -43,13 +43,17 @@ init() ->
               end,
     erlang:load_nif(filename:join(PrivDir, ?MODULE), 0).
 
--type bitmap() :: binary().
--type rle_bitmap() :: binary().
+-type bitmap() :: binary() | iolist().
+-type rle_bitmap() :: binary() | iolist().
+-type pixels() :: integer().
+-type bpp() :: 15 | 16 | 24.
 
--spec compress(Pixels :: bitmap(), Width :: integer(), Height :: integer(), Bpp :: integer()) -> {ok, rle_bitmap()} | {error, term()}.
+-spec compress(Pixels :: bitmap(), Width :: pixels(), Height :: pixels(),
+  Bpp :: bpp()) -> {ok, rle_bitmap()} | {error, term()}.
 compress(_Pixels, _Width, _Height, _Bpp) ->
     error(bad_nif).
 
--spec uncompress(Compressed :: rle_bitmap(), Width :: integer(), Height :: integer(), Bpp :: integer()) -> {ok, bitmap()} | {error, term()}.
+-spec uncompress(Compressed :: rle_bitmap(), Width :: pixels(),
+  Height :: pixels(), Bpp :: bpp()) -> {ok, bitmap()} | {error, term()}.
 uncompress(_Compr, _W, _H, _Bpp) ->
     error(bad_nif).

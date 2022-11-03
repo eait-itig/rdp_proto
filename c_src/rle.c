@@ -49,9 +49,16 @@ uncompress(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 	memset(&out, 0, sizeof(out));
 	memset(&temp, 0, sizeof(temp));
 
-	if (!enif_inspect_binary(env, argv[0], &in)) {
-		err = enif_make_atom(env, "bad_data");
-		goto fail;
+	if (enif_is_binary(env, argv[0])) {
+		if (!enif_inspect_binary(env, argv[0], &in)) {
+			err = enif_make_atom(env, "bad_data");
+			goto fail;
+		}
+	} else {
+		if (!enif_inspect_iolist_as_binary(env, argv[0], &in)) {
+			err = enif_make_atom(env, "bad_data");
+			goto fail;
+		}
 	}
 	if (!enif_get_int(env, argv[1], &w)) {
 		err = enif_make_atom(env, "bad_width");
@@ -112,9 +119,16 @@ compress(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 	memset(&out, 0, sizeof(out));
 	memset(&temp, 0, sizeof(temp));
 
-	if (!enif_inspect_binary(env, argv[0], &in)) {
-		err = enif_make_atom(env, "bad_data");
-		goto fail;
+	if (enif_is_binary(env, argv[0])) {
+		if (!enif_inspect_binary(env, argv[0], &in)) {
+			err = enif_make_atom(env, "bad_data");
+			goto fail;
+		}
+	} else {
+		if (!enif_inspect_iolist_as_binary(env, argv[0], &in)) {
+			err = enif_make_atom(env, "bad_data");
+			goto fail;
+		}
 	}
 	if (!enif_get_int(env, argv[1], &w)) {
 		err = enif_make_atom(env, "bad_width");
