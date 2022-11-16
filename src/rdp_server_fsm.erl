@@ -605,6 +605,29 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = DaPkt}),
 
+            % if they indicated multi-monitor support, send them the monitor
+            % layout pdu now so their client knows we accepted it
+            Mons = case lists:keyfind(tsud_monitor, 1, S#state.tsuds) of
+                #tsud_monitor{monitors = M} ->
+                    M;
+                _ ->
+                    [#tsud_monitor_def{left = 0, top = 0,
+                                       right = W, bottom = H,
+                                       flags = [primary]}]
+            end,
+            #tsud_core{capabilities = Caps} = Core,
+            case lists:member(monitor_layout, Caps) of
+                true ->
+                    {ok, MonitorMap} = rdpp:encode_sharecontrol(
+                        #ts_sharedata{
+                            channel = Us, shareid = ShareId,
+                            data = #ts_monitor_layout{monitors = Mons}}),
+                    ok = rdp_server:send({self(), S}, #mcs_srv_data{
+                        user = Us, channel = IoChan, data = MonitorMap});
+                _ ->
+                    ok
+            end,
+
             % now we proceed to the final capabilities exchange
             {next_state, rdp_capex, S#state{
                 shareid = ShareId, client_info = InfoPkt, bpp = Bpp,
@@ -724,20 +747,6 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
                     data = #ts_fontmap{}}),
             ok = rdp_server:send({self(), S}, #mcs_srv_data{
                 user = Us, channel = IoChan, data = FontMap}),
-
-            % if they sent us multi-monitor tsuds, send them the monitor layout
-            % pdu now so their client knows we accepted it
-            case lists:keyfind(tsud_monitor, 1, S#state.tsuds) of
-                #tsud_monitor{monitors = Ms} ->
-                    {ok, MonitorMap} = rdpp:encode_sharecontrol(
-                        #ts_sharedata{
-                            channel = Us, shareid = ShareId,
-                            data = #ts_monitor_layout{monitors = Ms}}),
-                    ok = rdp_server:send({self(), S}, #mcs_srv_data{
-                        user = Us, channel = IoChan, data = MonitorMap});
-                _ ->
-                    ok
-            end,
 
             % make sure the mouse pointer is visible
             ok = rdp_server:send_update({self(), S},
