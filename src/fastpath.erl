@@ -37,7 +37,7 @@
 -include("fastpath.hrl").
 
 -export([decode_input/1, decode_output/1]).
--export([encode_output/1, encode_input/1]).
+-export([encode_output/1, encode_output/2, encode_input/1]).
 -export([pretty_print/1]).
 
 -define(pp(Rec),
@@ -124,54 +124,69 @@ decode_input(Binary) ->
 decode_output(Binary) ->
     decode(Binary, fun decode_out_updates/1).
 
--define(FRAGMENT_SIZE, 1024).
+-define(FRAGMENT_SIZE, 16#3F00).
 
-encode_update(#ts_update_orders{orders = Orders}) ->
+encode_update(#ts_update_orders{orders = Orders}, Compr) ->
     Count = length(Orders),
     OrdersBin = lists:foldl(fun(Order, Bin) ->
         B = rdpp:encode_ts_order(Order),
         <<Bin/binary, B/binary>>
     end, <<>>, Orders),
     Inner = <<Count:16/little, OrdersBin/binary>>,
-    encode_update({16#00, single, Inner});
+    encode_update({16#00, single, Inner}, Compr);
 
-encode_update(Ub = #ts_update_bitmaps{}) ->
+encode_update(Ub = #ts_update_bitmaps{}, Compr) ->
     Inner = rdpp:encode_ts_update_bitmaps(Ub),
-    encode_update({16#01, single, <<1:16/little, Inner/binary>>});
+    encode_update({16#01, single, <<1:16/little, Inner/binary>>}, Compr);
 
-encode_update(#fp_update_mouse{mode = hidden}) ->
-    encode_update({16#05, single, <<>>});
+encode_update(#fp_update_mouse{mode = hidden}, Compr) ->
+    encode_update({16#05, single, <<>>}, Compr);
 
-encode_update(#fp_update_mouse{mode = default}) ->
-    encode_update({16#06, single, <<>>});
+encode_update(#fp_update_mouse{mode = default}, Compr) ->
+    encode_update({16#06, single, <<>>}, Compr);
 
-encode_update(#ts_update_surfaces{surfaces = Surfs}) ->
+encode_update(#ts_update_surfaces{surfaces = Surfs}, Compr) ->
     SurfBins = iolist_to_binary([encode_surface(Surf) || Surf <- Surfs]),
-    encode_update({16#04, single, SurfBins});
+    encode_update({16#04, single, SurfBins}, Compr);
 
-encode_update({Type, single, Data}) when byte_size(Data) > ?FRAGMENT_SIZE ->
+encode_update({Type, single, Data}, Compr) when byte_size(Data) > ?FRAGMENT_SIZE ->
     Part = binary:part(Data, {0, ?FRAGMENT_SIZE}),
     Rest = binary:part(Data, {?FRAGMENT_SIZE, byte_size(Data) - ?FRAGMENT_SIZE}),
-    encode_update({Type, first, Part}) ++
-        encode_update({Type, last, Rest});
+    encode_update({Type, first, Part}, Compr) ++
+        encode_update({Type, last, Rest}, Compr);
 
-encode_update({Type, last, Data}) when byte_size(Data) > ?FRAGMENT_SIZE ->
+encode_update({Type, last, Data}, Compr) when byte_size(Data) > ?FRAGMENT_SIZE ->
     Part = binary:part(Data, {0, ?FRAGMENT_SIZE}),
     Rest = binary:part(Data, {?FRAGMENT_SIZE, byte_size(Data) - ?FRAGMENT_SIZE}),
-    encode_update({Type, next, Part}) ++
-        encode_update({Type, last, Rest});
+    encode_update({Type, next, Part}, Compr) ++
+        encode_update({Type, last, Rest}, Compr);
 
-encode_update({Type, Fragment, Data}) ->
-    Compression = 0,
-    ComprFlags = 0,
+encode_update({Type, Fragment, Data}, Compr) ->
     Fragmentation = case Fragment of
         single -> 0;
         last -> 1;
         first -> 2;
         next -> 3
     end,
-    Size = byte_size(Data),
-    [<<Compression:2, Fragmentation:2, Type:4, Size:16/little, Data/binary>>].
+    case {Compr, Data} of
+        {none, _} ->
+            Size = byte_size(Data),
+            [<<0:2, Fragmentation:2, Type:4, Size:16/little, Data/binary>>];
+        {_, <<>>} ->
+            Size = byte_size(Data),
+            [<<0:2, Fragmentation:2, Type:4, Size:16/little, Data/binary>>];
+        {MPPC, _} ->
+            {ok, ComprData, ComprFlagAtoms} = mppc_nif:compress(MPPC, [Data]),
+            Size = byte_size(ComprData),
+            ComprLevel = case mppc_nif:get_level(MPPC) of
+                '8k' -> 0;
+                '64k' -> 1
+            end,
+            ComprFlags = rdpp:encode_compr_flags(ComprFlagAtoms ++
+                [{type, ComprLevel}]),
+            [<<2:2, Fragmentation:2, Type:4, ComprFlags, Size:16/little,
+               ComprData/binary>>]
+    end.
 
 encode_surface(#ts_surface_frame_marker{frame = FrameId, action = Action}) ->
     ActionNum = case Action of
@@ -185,12 +200,12 @@ encode_surface(#ts_surface_set_bits{dest = {X,Y}, size = {W, H}, bpp = Bpp, code
      <<Bpp:8, 0, 0, Codec:8, W:16/little, H:16/little, (iolist_size(Data)):32/little>>,
      Data].
 
-encode_output(Pdu = #fp_pdu{contents = [Update]}) ->
-    Fragments = encode_update(Update),
+encode_output(Pdu = #fp_pdu{contents = [Update]}, Compr) ->
+    Fragments = encode_update(Update, Compr),
     iolist_to_binary(lists:map(fun(Fragment) ->
-        encode_output(Pdu#fp_pdu{contents = Fragment})
+        encode_output(Pdu#fp_pdu{contents = Fragment}, Compr)
     end, Fragments));
-encode_output(#fp_pdu{flags = Flags, signature = Signature, contents = ContentsBin}) when is_binary(ContentsBin) ->
+encode_output(#fp_pdu{flags = Flags, signature = Signature, contents = ContentsBin}, _Compr) when is_binary(ContentsBin) ->
     Encrypted = case lists:member(encrypted, Flags) of true -> 1; _ -> 0 end,
     SaltedMAC = case lists:member(salted_mac, Flags) of true -> 1; _ -> 0 end,
     LargeSize = ((byte_size(ContentsBin) + 10) >= 1 bsl 7),
@@ -210,12 +225,14 @@ encode_output(#fp_pdu{flags = Flags, signature = Signature, contents = ContentsB
     end,
     <<Header2/binary, ContentsBin/binary>>.
 
+encode_output(Pdu) -> encode_output(Pdu, none).
+
 encode_input(#fp_pdu{flags = Flags, signature = Signature, contents = Contents}) when is_list(Contents) ->
     ContentsBin = lists:foldl(
         fun(Update, Bin) when is_binary(Update) ->
             <<Bin/binary, Update/binary>>;
         (Update, Bin) ->
-            B = encode_update(Update),
+            B = encode_update(Update, none),
             <<Bin/binary, B/binary>>
         end, <<>>, Contents),
     Encrypted = case lists:member(encrypted, Flags) of true -> 1; _ -> 0 end,

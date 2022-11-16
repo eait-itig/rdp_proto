@@ -2,7 +2,7 @@
 %% rdpproxy
 %% remote desktop proxy
 %%
-%% Copyright 2012-2015 Alex Wilson <alex@uq.edu.au>
+%% Copyright 2022 Alex Wilson <alex@uq.edu.au>
 %% The University of Queensland
 %% All rights reserved.
 %%
@@ -27,10 +27,19 @@
 %% THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %%
 
--module(rle_nif).
+-module(mppc_nif).
 
--export([compress/4, uncompress/4]).
+-export([
+    new_context/1,
+    set_level/2,
+    get_level/1,
+    compress/2,
+    decompress/3,
+    reset/2
+    ]).
 -on_load(init/0).
+
+-export_type([context/0]).
 
 try_paths([Last], BaseName) ->
     filename:join([Last, BaseName]);
@@ -55,20 +64,29 @@ init() ->
         {error, bad_name} -> Paths0;
         Dir -> [Dir | Paths0]
     end,
-    SoName = try_paths(Paths1, "rle_nif"),
+    SoName = try_paths(Paths1, "mppc_nif"),
     erlang:load_nif(SoName, 0).
 
--type bitmap() :: binary() | iolist().
--type rle_bitmap() :: binary() | iolist().
--type pixels() :: integer().
--type bpp() :: 15 | 16 | 24.
+-opaque context() :: reference().
+-type level() :: '8k' | '64k'.
+-type flags() :: [compressed | at_front | flushed].
+-type mode() :: compress | decompress.
 
--spec compress(Pixels :: bitmap(), Width :: pixels(), Height :: pixels(),
-  Bpp :: bpp()) -> {ok, rle_bitmap()} | {error, term()}.
-compress(_Pixels, _Width, _Height, _Bpp) ->
-    error(bad_nif).
+-spec new_context(mode()) -> {ok, context()}.
+new_context(_Mode) -> error(no_nif).
 
--spec uncompress(Compressed :: rle_bitmap(), Width :: pixels(),
-  Height :: pixels(), Bpp :: bpp()) -> {ok, bitmap()} | {error, term()}.
-uncompress(_Compr, _W, _H, _Bpp) ->
-    error(bad_nif).
+-spec set_level(context(), level()) -> ok.
+set_level(_Context, _Level) -> error(no_nif).
+
+-spec get_level(context()) -> level().
+get_level(_Context) -> error(no_nif).
+
+-spec reset(context(), boolean()) -> ok.
+reset(_Context, _Flush) -> error(no_nif).
+
+-spec compress(context(), iolist()) -> {ok, iolist(), flags()}.
+compress(_Context, _Data) -> error(no_nif).
+
+-spec decompress(context(), iolist(), flags()) -> {ok, iolist()}.
+decompress(_Context, _Data, _Flags) -> error(no_nif).
+

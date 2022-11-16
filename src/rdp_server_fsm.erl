@@ -47,13 +47,15 @@ start_link(Sock, Mod, Sup) ->
 
 init([LSock, {Mod, InitArgs}, Sup]) ->
     process_flag(trap_exit, true),
+    {ok, MPPC} = mppc_nif:new_context(compress),
     {ok, accept, #state{mod = Mod, initargs = InitArgs, sup = Sup, lsock = LSock,
-        chansavail=lists:seq(1002,1002+35)}, 0};
+        chansavail=lists:seq(1002,1002+35), mppc = MPPC}, 0};
 
 init([LSock, Mod, Sup]) ->
     process_flag(trap_exit, true),
+    {ok, MPPC} = mppc_nif:new_context(compress),
     {ok, accept, #state{mod = Mod, initargs = [], sup = Sup, lsock = LSock,
-        chansavail=lists:seq(1002,1002+35)}, 0}.
+        chansavail=lists:seq(1002,1002+35), mppc = MPPC}, 0}.
 
 accept(timeout, S = #state{mod = Mod, initargs = InitArgs0, sup = Sup, lsock = LSock}) ->
     % accept a new connection
@@ -479,6 +481,17 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
     #mcs_data{data = RdpData} = Pdu,
     case rdpp:decode_basic(RdpData) of
         {ok, #ts_info{} = InfoPkt} ->
+            % get the maximum supported MPPC compression level from the client
+            % and stash it in our mppc context. we'll use it for fastpath
+            % updates later.
+            #ts_info{compression = ComprLevel} = InfoPkt,
+            RealComprLevel = case ComprLevel of
+                '8k' -> '8k';
+                _ -> '64k'
+            end,
+            #state{mppc = MPPC} = S,
+            ok = mppc_nif:set_level(MPPC, RealComprLevel),
+
             % first up, send them the license confirmation packet
             {ok, LicData} = rdpp:encode_basic(
                 #ts_license_vc{secflags=[encrypt_license]}),
@@ -791,6 +804,12 @@ init_finalize({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
 running({send, Packet}, _From, S = #state{sslsock = SslSock}) ->
     Ret = ssl:send(SslSock, Packet),
     {reply, Ret, running, S};
+running({send_mcs, McsPkt}, _From, S = #state{}) ->
+    rdp_server:send({self(), S}, McsPkt),
+    {reply, ok, running, S};
+running({send_update, TsUpdate}, _From, S = #state{}) ->
+    rdp_server:send_update({self(), S}, TsUpdate),
+    {reply, ok, running, S};
 
 running(get_pings, _From, S = #state{lastpings = Q}) ->
     {reply, {ok, queue:to_list(Q)}, running, S}.

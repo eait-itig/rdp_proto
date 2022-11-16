@@ -78,14 +78,13 @@ send_raw2(#state{sslsock = Sock}, Bin) ->
     ssl:send(Sock, Bin).
 
 -spec send(server(), tuple()) -> ok | {error, term()}.
-send({Pid, #state{sslsock = Sock}}, McsPkt) ->
+send({Pid, #state{sslsock = Sock}}, McsPkt) when (Pid =:= self()) ->
     {ok, McsData} = mcsgcc:encode_dpdu(McsPkt),
     {ok, DtData} = x224:encode(#x224_dt{data = McsData}),
     {ok, Packet} = tpkt:encode(DtData),
-    case self() of
-        Pid -> ssl:send(Sock, Packet);
-        _ -> gen_fsm:sync_send_event(Pid, {send, Packet})
-    end.
+    ok = ssl:send(Sock, Packet);
+send({Pid, _}, McsPkt) ->
+    gen_fsm:sync_send_event(Pid, {send_mcs, McsPkt}, infinity).
 
 -spec send_vchan(server(), mcs_chan(), #ts_vchan{}) -> ok | {error, term()}.
 send_vchan({Pid, #state{sslsock = Sock, mcs = Mcs}}, ChanId, VPdu) ->
@@ -121,20 +120,23 @@ start_tls({Pid, #state{}}, SslOpts, CC = #x224_cc{}) ->
     gen_fsm:send_event(Pid, {start_tls, SslOpts, Packet}).
 
 -spec send_update(server(), tuple()) -> ok | {error, term()}.
-send_update(S = {Pid, State = #state{sslsock = SslSock, caps = Caps}}, TsUpdate) ->
+send_update(Srv = {Pid, S}, TsUpdate) when (Pid =:= self()) ->
+    #state{sslsock = SslSock, caps = Caps, mppc = MPPC} = S,
     #ts_cap_general{flags = Flags} = lists:keyfind(ts_cap_general, 1, Caps),
     case lists:member(fastpath, Flags) of
         true ->
-            Bin = fastpath:encode_output(#fp_pdu{flags=[salted_mac], contents=[TsUpdate]}),
-            case self() of
-                Pid -> ssl:send(SslSock, Bin);
-                _ -> gen_fsm:sync_send_event(Pid, {send, Bin})
-            end;
+            Bin = fastpath:encode_output(
+                #fp_pdu{flags=[salted_mac], contents=[TsUpdate]},
+                MPPC),
+            ok = ssl:send(SslSock, Bin);
         _ ->
-            #state{shareid = ShareId, mcs = #mcs_state{us = Us, iochan = IoChan}} = State,
+            #state{shareid = ShareId, mcs = #mcs_state{us = Us, iochan = IoChan}} = S,
             {ok, Bin} = rdpp:encode_sharecontrol(#ts_sharedata{channel = Us, shareid = ShareId, data = TsUpdate}),
-            send(S, #mcs_srv_data{user = Us, channel = IoChan, data = Bin})
-    end.
+            send(Srv, #mcs_srv_data{user = Us, channel = IoChan, data = Bin})
+    end;
+send_update({Pid, _}, TsUpdate) ->
+    gen_fsm:sync_send_event(Pid, {send_update, TsUpdate}, infinity).
+
 
 curstate({Pid, State0}) ->
     case self() of

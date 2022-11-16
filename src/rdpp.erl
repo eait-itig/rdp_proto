@@ -44,6 +44,7 @@
 -export([decode_ts_confirm/2]).
 -export([encode_vchan/1, decode_vchan/1]).
 -export([pretty_print/1]).
+-export([encode_compr_flags/1, decode_compr_flags/1]).
 
 -define(pp(Rec),
 pretty_print(Rec, N) ->
@@ -151,6 +152,7 @@ pretty_print(_, _) ->
     windows_key, compression, logon_notify, maximize_shell, unicode, autologon, skip,
     disable_salute, mouse
     ]}).
+-bitset({compr_flags, [flushed, at_front, compressed, skip, {type,4}]}).
 
 decode_client(Bin) ->
     decode(Bin, decode_output).
@@ -755,19 +757,32 @@ encode_ts_redir(#ts_redir{sessionid = Session, username = Username, domain = Dom
         end
     ], []).
 
+strip_compr_type([]) -> {{type, 0}, []};
+strip_compr_type([type | Rest]) -> {{type,1}, Rest};
+strip_compr_type([{type,N} | Rest]) -> {{type,N}, Rest};
+strip_compr_type([Next | Rest0]) ->
+    {Type, Rest1} = strip_compr_type(Rest0),
+    {Type, [Next | Rest1]}.
+
 decode_sharedata(Chan, Bin) ->
     case Bin of
-        <<ShareId:32/little, _:8, Priority:8, Length:16/little, PduType:8, Flags:4, CompType:4, CompressedLength:16/little, Rest/binary>> ->
-            <<Flushed:1, AtFront:1, Compressed:1, _:1>> = <<Flags:4>>,
-            FlagAtoms = if Flushed == 1 -> [flushed]; true -> [] end ++
-                        if AtFront == 1 -> [at_front]; true -> [] end ++
-                        if Compressed == 1 -> [compressed]; true -> [] end,
+        <<ShareId:32/little, _:8, Priority:8, Length:16/little, PduType:8, ComprFlags:8, CompressedLength:16/little, Rest/binary>> ->
+            FlagAndTypeAtoms = decode_compr_flags(ComprFlags),
+            {TypeTerm, FlagAtoms} = strip_compr_type(FlagAndTypeAtoms),
+            {type, CompType} = TypeTerm,
+            CompTypeAtom = case CompType of
+                0 -> '8k';
+                1 -> '64k';
+                2 -> 'rdp6';
+                3 -> 'rdp61';
+                _ -> 'unknown'
+            end,
+            Compressed = lists:member(compressed, FlagAtoms),
             Prio = case Priority of 1 -> low; 2 -> medium; 4 -> high; _ -> unknown end,
-            CompTypeAtom = case CompType of 0 -> '8k'; 1 -> '64k'; 2 -> 'rdp6'; 3 -> 'rdp61'; _ -> 'unknown' end,
             RealSize = byte_size(Rest),
-            if (Compressed == 1) and (CompressedLength == RealSize) ->
+            if Compressed and (CompressedLength == RealSize) ->
                 {ok, #ts_sharedata{channel = Chan, shareid = ShareId, priority = Prio, flags = FlagAtoms, comptype = CompTypeAtom, data = {PduType, Rest}}};
-            (Compressed == 0) -> %and (Length == RealSize) ->
+            (not Compressed) -> %and (Length == RealSize) ->
                 Inner = case PduType of
                     %16#02 -> decode_update(Rest);
                     31 -> decode_ts_sync(Rest);

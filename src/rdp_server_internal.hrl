@@ -53,4 +53,5 @@
     pingtimer :: undefined | reference(),
     lastpings = queue:new() :: queue:queue(integer()),
     pings = #{} :: #{integer() => integer()},
-    starttimer :: undefined | reference()}).
+    starttimer :: undefined | reference(),
+    mppc :: reference()}).
