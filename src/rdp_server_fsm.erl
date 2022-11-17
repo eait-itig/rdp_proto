@@ -1119,8 +1119,21 @@ handle_info({'EXIT', Pid, Reason}, State,
 handle_info(check_ping, State, S) ->
     ?MODULE:State(check_ping, S);
 
+handle_info(Msg, running, S = #state{mod = Mod, modstate = MS}) ->
+    case erlang:function_exported(Mod, handle_info, 3) of
+        true ->
+            case Mod:handle_info(Msg, {self(), S}, MS) of
+                {ok, MS2} ->
+                    {next_state, running, S#state{modstate = MS2}};
+                {stop, Reason, MS2} ->
+                    {stop, Reason, S#state{modstate = MS2}}
+            end;
+        false ->
+            lager:debug("unhandled message (no handle_info): ~p", [Msg]),
+            {next_state, running, S}
+    end;
 handle_info(Msg, State, S) ->
-    _ = lager:debug("unhandled message in state ~p: ~p", [State, Msg]),
+    lager:debug("unhandled message in state ~p: ~p", [State, Msg]),
     {next_state, State, S}.
 
 handle_event({watch_child, Pid}, State,

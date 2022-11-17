@@ -41,7 +41,8 @@
     init_ui/2,
     handle_event/3,
     terminate/2,
-    choose_format/3
+    choose_format/3,
+    handle_info/3
     ]).
 
 -record(state, {}).
@@ -115,6 +116,10 @@ handle_event(#ts_inpevt_key{}, Srv, S = #state{}) ->
     {ok, S};
 
 handle_event(#ts_inpevt_sync{}, Srv, S = #state{}) ->
+    {ok, S}.
+
+handle_info(Msg, Srv, S = #state{}) ->
+    lager:debug("got example msg: ~p", [Msg]),
     {ok, S}.
 
 terminate(_Reason, #state{}) ->

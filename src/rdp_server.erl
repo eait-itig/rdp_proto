@@ -56,6 +56,8 @@
 
 -callback handle_raw_data(Data :: binary(), Server :: server(), State :: term()) -> {ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
 
+-callback handle_info(Msg :: term(), Server :: server(), State :: term()) -> {ok, NewState :: term()} | {stop, Reason :: term(), NewState :: term()}.
+
 -callback terminate(Server :: server(), State :: term()) -> ok.
 
 -spec x224_state(server()) -> #x224_state{}.
