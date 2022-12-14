@@ -69,6 +69,7 @@ copy(Pid, FormatMap) ->
     formats = [] :: [cliprdr:format()],
     caps = [] :: [cliprdr:cliprdr_cap()],
     pasteq = queue:new() :: queue:queue(pid()),
+    copier :: undefined | gen_statem:from(),
     data = #{} :: #{cliprdr:format() => iolist()}
     }).
 
@@ -126,7 +127,7 @@ startup({call, From}, {copy, Map}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
         flags = [first, last, show_protocol],
         data = FmtListData
     }),
-    S1 = S0#?MODULE{data = Map, formats = Formats},
+    S1 = S0#?MODULE{data = Map, formats = Formats, copier = From},
     {next_state, local_copied, S1};
 
 startup(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
@@ -193,7 +194,7 @@ copied({call, From}, {copy, Map}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
         flags = [first, last, show_protocol],
         data = FmtListData
     }),
-    S1 = S0#?MODULE{data = Map, formats = Formats},
+    S1 = S0#?MODULE{data = Map, formats = Formats, copier = From},
     {next_state, local_copied, S1};
 
 copied(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
@@ -218,7 +219,10 @@ local_copied({call, From}, {paste, Format}, S0 = #?MODULE{data = Map}) ->
     end,
     keep_state_and_data;
 
-local_copied(cast, {pdu, #cliprdr_format_resp{}}, S0 = #?MODULE{}) ->
+local_copied(cast, {pdu, #cliprdr_format_resp{}}, S0 = #?MODULE{copier = undefined}) ->
+    keep_state_and_data;
+local_copied(cast, {pdu, #cliprdr_format_resp{}}, S0 = #?MODULE{copier = From}) ->
+    gen_statem:reply(From, ok),
     keep_state_and_data;
 
 local_copied(cast, {pdu, #cliprdr_data_req{format = Fmt}}, S0 = #?MODULE{srv = Srv, chanid = ChanId, data = Map}) ->
@@ -244,7 +248,7 @@ local_copied({call, From}, {copy, Map}, S0 = #?MODULE{srv = Srv, chanid = ChanId
         flags = [first, last, show_protocol],
         data = FmtListData
     }),
-    S1 = S0#?MODULE{data = Map, formats = Formats},
+    S1 = S0#?MODULE{data = Map, formats = Formats, copier = From},
     {next_state, local_copied, S1};
 
 local_copied(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
