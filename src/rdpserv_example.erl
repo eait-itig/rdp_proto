@@ -78,34 +78,13 @@ handle_event(#ts_inpevt_mouse{point = {X,Y}, action=move}, Srv, S = #state{}) ->
     {ok, S};
 
 handle_event(#ts_inpevt_mouse{action = down}, Srv, S = #state{}) ->
-    {ok, D} = rdp_server:get_vchan_pid(Srv, rdpdr_fsm),
+    {ok, D} = rdp_server:get_vchan_pid(Srv, cliprdr_fsm),
     spawn_link(fun () ->
-        case rdpdr_fsm:get_devices(D) of
-            {ok, [#rdpdr_dev_smartcard{id = DevId}]} ->
-                {ok, SC0} = rdpdr_scard:open(D, DevId, system),
-                {ok, Groups, SC1} = rdpdr_scard:list_groups(SC0),
-                [Group0 | _] = Groups,
-                {ok, Readers, SC2} = rdpdr_scard:list_readers(Group0, SC1),
-                [Reader | _] = Readers,
-                lager:debug("first reader is ~s", [Reader]),
-                {ok, Mode, SC3} = rdpdr_scard:connect(Reader, shared, {t0_or_t1, optimal}, SC2),
-                lager:debug("connected to ~p: ~p", [Reader, Mode]),
-                {ok, [Piv | _]} = apdu_stack:start_link(element(1, Mode),
-                    [nist_piv, iso7816_chain, iso7816, {rdpdr_scard_apdu, [SC3]}]),
-
-                ok = apdu_transform:begin_transaction(Piv),
-                {ok, [Reply]} = apdu_transform:command(Piv, select),
-                lager:debug("reply = ~p", [Reply]),
-                {ok, [Chuid]} = apdu_transform:command(Piv, read_chuid),
-                lager:debug("chuid = ~p", [Chuid]),
-
-                {ok, _} = apdu_transform:end_transaction(Piv),
-
-                {ok, SC4} = rdpdr_scard:disconnect(leave, SC3),
-                ok = rdpdr_scard:close(SC4);
-            _ ->
-                lager:debug("no scard")
-        end
+        Res = cliprdr_fsm:copy(D, #{
+            text => "hello",
+            unicode => unicode:characters_to_binary("hello", utf8, {utf16,little})
+        }),
+        lager:debug("cliprdr copy = ~p", [Res])
     end),
     {ok, S};
 

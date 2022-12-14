@@ -100,6 +100,9 @@ encode(#cliprdr_data_req{flags = Flags, format = Fmt}) ->
     end,
     encode(16#0004, Flags, <<Id:32/little>>);
 
+encode(#cliprdr_data_resp{flags = Flags, data = Data}) ->
+    encode(16#0005, Flags, Data);
+
 encode(_) -> error(bad_record).
 
 encode(Type, FlagList, Data) ->
@@ -135,6 +138,32 @@ decode(16#0002, MsgFlags, Caps, Data) ->
         not UseLongFormat -> decode_short_format(Data)
     end,
     {ok, #cliprdr_format_list{flags = MsgFlags, formats = Formats}};
+
+decode(16#0003, MsgFlags, _Caps, _Data) ->
+    {ok, #cliprdr_format_resp{flags = MsgFlags}};
+
+decode(16#0004, MsgFlags, _Caps, Data) ->
+    <<Id:32/little>> = Data,
+    Fmt = case Id of
+        1 -> text;
+        2 -> bitmap;
+        3 -> metafile;
+        4 -> sylk;
+        5 -> dif;
+        6 -> tiff;
+        7 -> oemtext;
+        8 -> dib;
+        9 -> palette;
+        10 -> pendata;
+        11 -> riff;
+        12 -> wave;
+        13 -> unicode;
+        14 -> enh_metafile;
+        15 -> hdrop;
+        16 -> locale;
+        I when is_integer(I) -> I
+    end,
+    {ok, #cliprdr_data_req{flags = MsgFlags, format = Fmt}};
 
 decode(16#0005, MsgFlags, _Caps, Data) ->
     {ok, #cliprdr_data_resp{flags = MsgFlags, data = Data}};
