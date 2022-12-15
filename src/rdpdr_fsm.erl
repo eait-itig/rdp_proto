@@ -176,6 +176,9 @@ caps_exchange(enter, _PrevState, #?MODULE{srv = Srv, chanid = ChanId}) ->
 caps_exchange({call, _}, _, #?MODULE{}) ->
     {keep_state_and_data, [postpone]};
 
+caps_exchange(cast, {pdu, #rdpdr_clientid_confirm{}}, S0 = #?MODULE{}) ->
+    keep_state_and_data;
+
 caps_exchange(cast, {pdu, #rdpdr_client_caps{caps = Caps}}, S0 = #?MODULE{}) ->
     S1 = S0#?MODULE{caps = Caps},
     {next_state, await_devices, S1};

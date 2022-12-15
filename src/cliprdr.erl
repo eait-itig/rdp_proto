@@ -103,6 +103,12 @@ encode(#cliprdr_data_req{flags = Flags, format = Fmt}) ->
 encode(#cliprdr_data_resp{flags = Flags, data = Data}) ->
     encode(16#0005, Flags, Data);
 
+encode(#cliprdr_lock{flags = Flags, id = Id}) ->
+    encode(16#000A, Flags, <<Id:32/little>>);
+
+encode(#cliprdr_unlock{flags = Flags, id = Id}) ->
+    encode(16#000B, Flags, <<Id:32/little>>);
+
 encode(_) -> error(bad_record).
 
 encode(Type, FlagList, Data) ->
@@ -172,6 +178,14 @@ decode(16#0007, MsgFlags, _Caps, Data) ->
     <<NSets:16/little, _:16, SetsBin/binary>> = Data,
     Caps = decode_caps_set(SetsBin, NSets),
     {ok, #cliprdr_caps{flags = MsgFlags, caps = Caps}};
+
+decode(16#000A, MsgFlags, _Caps, Data) ->
+    <<Id:32/little>> = Data,
+    {ok, #cliprdr_lock{flags = MsgFlags, id = Id}};
+
+decode(16#000B, MsgFlags, _Caps, Data) ->
+    <<Id:32/little>> = Data,
+    {ok, #cliprdr_unlock{flags = MsgFlags, id = Id}};
 
 decode(MsgType, _, _, _) ->
     {error, {unknown_type, MsgType}}.

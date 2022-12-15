@@ -81,20 +81,16 @@ init([Srv, ChanId]) ->
 terminate(_Reason, _State, #?MODULE{}) ->
     ok.
 
-startup(enter, _PrevState, #?MODULE{srv = Srv, chanid = ChanId}) ->
-    CapsData = cliprdr:encode(#cliprdr_caps{
-        flags = [first, last, show_protocol],
+send_pdu(Pdu, #?MODULE{srv = Srv, chanid = ChanId}) ->
+    Data = cliprdr:encode(Pdu),
+    VPdu = #ts_vchan{flags = [first, last, show_protocol], data = Data},
+    ok = rdp_server:send_vchan(Srv, ChanId, VPdu).
+
+startup(enter, _PrevState, S0 = #?MODULE{}) ->
+    send_pdu(#cliprdr_caps{
         caps = [#cliprdr_cap_general{flags = [files, locking, long_names]}]
-    }),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
-        data = CapsData
-    }),
-    MonReadyData = cliprdr:encode(#cliprdr_monitor_ready{}),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
-        data = MonReadyData
-    }),
+    }, S0),
+    send_pdu(#cliprdr_monitor_ready{}, S0),
     keep_state_and_data;
 
 startup(cast, {pdu, Pdu = #cliprdr_caps{caps = Caps}}, S0 = #?MODULE{srv = Srv}) ->
@@ -103,13 +99,9 @@ startup(cast, {pdu, Pdu = #cliprdr_caps{caps = Caps}}, S0 = #?MODULE{srv = Srv})
     _ = lager:debug("cliprdr caps for ~p: ~s", [Pid, cliprdr:pretty_print(Pdu)]),
     {keep_state, S1};
 
-startup(cast, {pdu, #cliprdr_format_list{formats = Fmts}}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
+startup(cast, {pdu, #cliprdr_format_list{formats = Fmts}}, S0 = #?MODULE{}) ->
     S1 = S0#?MODULE{formats = Fmts},
-    FmtRespData = cliprdr:encode(#cliprdr_format_resp{flags = [ok]}),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
-        data = FmtRespData
-    }),
+    send_pdu(#cliprdr_format_resp{flags = [ok]}, S0),
     {next_state, copied, S1};
 
 startup({call, From}, list_formats, #?MODULE{}) ->
@@ -120,13 +112,9 @@ startup({call, From}, {paste, _}, #?MODULE{}) ->
     gen_statem:reply(From, {error, starting_up}),
     keep_state_and_data;
 
-startup({call, From}, {copy, Map}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
+startup({call, From}, {copy, Map}, S0 = #?MODULE{}) ->
     Formats = maps:keys(Map),
-    FmtListData = cliprdr:encode(#cliprdr_format_list{formats = Formats}),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
-        data = FmtListData
-    }),
+    send_pdu(#cliprdr_format_list{formats = Formats}, S0),
     S1 = S0#?MODULE{data = Map, formats = Formats, copier = From},
     {next_state, local_copied, S1};
 
@@ -136,20 +124,16 @@ startup(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
 copied(enter, _PrevState, #?MODULE{}) ->
     keep_state_and_data;
 
-copied(cast, {pdu, #cliprdr_format_list{formats = Fmts}}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
+copied(cast, {pdu, #cliprdr_format_list{formats = Fmts}}, S0 = #?MODULE{}) ->
     S1 = S0#?MODULE{formats = Fmts},
-    FmtRespData = cliprdr:encode(#cliprdr_format_resp{flags = [ok]}),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
-        data = FmtRespData
-    }),
+    send_pdu(#cliprdr_format_resp{flags = [ok]}, S0),
     {keep_state, S1};
 
 copied({call, From}, list_formats, #?MODULE{formats = Fmts}) ->
     gen_statem:reply(From, {ok, Fmts}),
     keep_state_and_data;
 
-copied({call, From}, {paste, Format}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
+copied({call, From}, {paste, Format}, S0 = #?MODULE{}) ->
     #?MODULE{pasteq = Q0, formats = Fmts} = S0,
     Q1 = queue:in({From, Format}, Q0),
     S1 = S0#?MODULE{pasteq = Q1},
@@ -157,11 +141,7 @@ copied({call, From}, {paste, Format}, S0 = #?MODULE{srv = Srv, chanid = ChanId})
         false when is_atom(Format) or is_integer(Format) -> Format;
         {Id, _Name} -> Id
     end,
-    DataReqData = cliprdr:encode(#cliprdr_data_req{format = FmtId}),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
-        data = DataReqData
-    }),
+    send_pdu(#cliprdr_data_req{format = FmtId}, S0),
     {keep_state, S1};
 
 copied(cast, {pdu, #cliprdr_data_resp{flags = Flags, data = Data0}}, S0 = #?MODULE{}) ->
@@ -187,13 +167,9 @@ copied(cast, {pdu, #cliprdr_data_resp{flags = Flags, data = Data0}}, S0 = #?MODU
             {keep_state, S1}
     end;
 
-copied({call, From}, {copy, Map}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
+copied({call, From}, {copy, Map}, S0 = #?MODULE{}) ->
     Formats = maps:keys(Map),
-    FmtListData = cliprdr:encode(#cliprdr_format_list{formats = Formats}),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
-        data = FmtListData
-    }),
+    send_pdu(#cliprdr_format_list{formats = Formats}, S0),
     S1 = S0#?MODULE{data = Map, formats = Formats, copier = From},
     {next_state, local_copied, S1};
 
@@ -210,7 +186,7 @@ local_copied({call, From}, list_formats, #?MODULE{formats = Fmts}) ->
     gen_statem:reply(From, {ok, Fmts}),
     keep_state_and_data;
 
-local_copied({call, From}, {paste, Format}, S0 = #?MODULE{data = Map}) ->
+local_copied({call, From}, {paste, Format}, #?MODULE{data = Map}) ->
     case Map of
         #{Format := Data} ->
             gen_statem:reply(From, {ok, Data});
@@ -219,37 +195,33 @@ local_copied({call, From}, {paste, Format}, S0 = #?MODULE{data = Map}) ->
     end,
     keep_state_and_data;
 
-local_copied(cast, {pdu, #cliprdr_format_resp{}}, S0 = #?MODULE{copier = undefined}) ->
+local_copied(cast, {pdu, #cliprdr_format_resp{}}, #?MODULE{copier = undefined}) ->
     keep_state_and_data;
-local_copied(cast, {pdu, #cliprdr_format_resp{}}, S0 = #?MODULE{copier = From}) ->
+local_copied(cast, {pdu, #cliprdr_format_resp{}}, #?MODULE{copier = From}) ->
     gen_statem:reply(From, ok),
     keep_state_and_data;
 
-local_copied(cast, {pdu, #cliprdr_data_req{format = Fmt}}, S0 = #?MODULE{srv = Srv, chanid = ChanId, data = Map}) ->
-    Data = case Map of
-        #{Fmt := D} ->
-            iolist_to_binary(D);
-        #{text := D} ->
-            iolist_to_binary(D);
+local_copied(cast, {pdu, #cliprdr_data_req{format = Fmt}}, S0 = #?MODULE{data = Map}) ->
+    case Map of
+        #{Fmt := Data} ->
+            send_pdu(#cliprdr_data_resp{flags = [ok], data = Data}, S0),
+            keep_state_and_data;
         _ ->
-            <<>>
-    end,
-    DataRespData = cliprdr:encode(#cliprdr_data_resp{data = Data}),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
-        data = DataRespData
-    }),
-    keep_state_and_data;
+            send_pdu(#cliprdr_data_resp{flags = [fail], data = <<>>}, S0),
+            keep_state_and_data
+    end;
 
-local_copied({call, From}, {copy, Map}, S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
+local_copied({call, From}, {copy, Map}, S0 = #?MODULE{}) ->
     Formats = maps:keys(Map),
-    FmtListData = cliprdr:encode(#cliprdr_format_list{formats = Formats}),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last, show_protocol],
-        data = FmtListData
-    }),
+    send_pdu(#cliprdr_format_list{formats = Formats}, S0),
     S1 = S0#?MODULE{data = Map, formats = Formats, copier = From},
     {next_state, local_copied, S1};
+
+local_copied(cast, {pdu, #cliprdr_lock{}}, #?MODULE{}) ->
+    keep_state_and_data;
+
+local_copied(cast, {pdu, #cliprdr_unlock{}}, #?MODULE{}) ->
+    keep_state_and_data;
 
 local_copied(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
     decode_vpdu(VPdu, S0).

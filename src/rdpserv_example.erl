@@ -80,8 +80,10 @@ handle_event(#ts_inpevt_mouse{point = {X,Y}, action=move}, Srv, S = #state{}) ->
 handle_event(#ts_inpevt_mouse{action = down}, Srv, S = #state{}) ->
     {ok, D} = rdp_server:get_vchan_pid(Srv, cliprdr_fsm),
     spawn_link(fun () ->
-        Res = cliprdr_fsm:paste(D, unicode),
-        lager:debug("cliprdr paste = ~p", [Res])
+        Res = cliprdr_fsm:copy(D, #{
+            text => binary:copy(<<"hello">>, 300)
+            }),
+        lager:debug("cliprdr copy = ~p", [Res])
     end),
     {ok, S};
 

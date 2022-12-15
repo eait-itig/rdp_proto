@@ -243,11 +243,31 @@ decode_sec_flags(Flags) ->
 encode_sec_flags({Type, Flags}) ->
     encode_sec_flags_bits([Type | Flags]).
 
--spec encode_vchan(#ts_vchan{}) -> binary().
+frags(<<Frag:1200/binary, Rest/binary>>) -> [Frag | frags(Rest)];
+frags(Rest) -> [Rest].
+
+wrap_frags(first, BaseFlags, [Frag]) ->
+    Pdu = #ts_vchan{flags = BaseFlags ++ [first, last], data = Frag},
+    [Pdu];
+wrap_frags(first, BaseFlags, [Frag | Rest]) ->
+    Pdu = #ts_vchan{flags = BaseFlags ++ [first], data = Frag},
+    [Pdu | wrap_frags(last, BaseFlags, Rest)];
+wrap_frags(last, BaseFlags, [Frag]) ->
+    Pdu = #ts_vchan{flags = BaseFlags ++ [last], data = Frag},
+    [Pdu];
+wrap_frags(last, BaseFlags, [Frag | Rest]) ->
+    Pdu = #ts_vchan{flags = BaseFlags, data = Frag},
+    [Pdu | wrap_frags(last, BaseFlags, Rest)].
+
+-spec encode_vchan(#ts_vchan{}) -> [binary()].
 encode_vchan(#ts_vchan{flags = FlagList, data = Data}) ->
-    Flags = encode_vchan_flags(FlagList),
+    BaseFlags = FlagList -- [first, last],
+    Pdus = wrap_frags(first, BaseFlags, frags(Data)),
     Len = byte_size(Data),
-    <<Len:32/little, Flags:32/little, Data/binary>>.
+    lists:map(fun (#ts_vchan{flags = FinalFlagList, data = FragData}) ->
+        Flags = encode_vchan_flags(FinalFlagList),
+        <<Len:32/little, Flags:32/little, FragData/binary>>
+    end, Pdus).
 
 -spec decode_vchan(binary(), [binary()]) -> {ok, #ts_vchan{}} |
     {fragment, [binary()]} | {error, term()}.

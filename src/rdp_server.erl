@@ -89,16 +89,25 @@ send({Pid, _}, McsPkt) ->
     gen_fsm:sync_send_event(Pid, {send_mcs, McsPkt}, infinity).
 
 -spec send_vchan(server(), mcs_chan(), #ts_vchan{}) -> ok | {error, term()}.
-send_vchan({Pid, #state{sslsock = Sock, mcs = Mcs}}, ChanId, VPdu) ->
+send_vchan(Srv, ChanId, Pdu) ->
+    VChanDatas = rdpp:encode_vchan(Pdu),
+    send_vchan_data(Srv, ChanId, VChanDatas).
+
+send_vchan_data(_Srv, _ChanId, []) -> ok;
+send_vchan_data(Srv = {Pid, #state{sslsock = Sock, mcs = Mcs}}, ChanId,
+                [VChanData | Rest]) ->
     #mcs_state{us = Us} = Mcs,
-    VChanData = rdpp:encode_vchan(VPdu),
     {ok, McsData} = mcsgcc:encode_dpdu(#mcs_srv_data{
         user = Us, channel = ChanId, data = VChanData}),
     {ok, DtData} = x224:encode(#x224_dt{data = McsData}),
     {ok, Packet} = tpkt:encode(DtData),
-    case self() of
+    Res = case self() of
         Pid -> ssl:send(Sock, Packet);
         _ -> gen_fsm:sync_send_event(Pid, {send, Packet})
+    end,
+    case Res of
+        ok -> send_vchan_data(Srv, ChanId, Rest);
+        Err -> Err
     end.
 
 -spec get_vchan_pid(server(), atom()) -> {ok, pid()} | {error, term()}.

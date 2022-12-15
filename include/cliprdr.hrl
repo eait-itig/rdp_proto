@@ -34,3 +34,5 @@
 -record(cliprdr_format_resp, {flags = []}).
 -record(cliprdr_data_req, {flags = [], format :: integer()}).
 -record(cliprdr_data_resp, {flags = [], data :: binary()}).
+-record(cliprdr_lock, {flags = [], id :: integer()}).
+-record(cliprdr_unlock, {flags = [], id :: integer()}).
