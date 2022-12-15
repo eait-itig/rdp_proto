@@ -50,6 +50,7 @@
     peer :: undefined | {inet:ip_address(), integer()},
     bpp :: undefined | integer(),
     chanfsms = #{} :: #{mcs_chan() => {atom(), pid()}},
+    vchfrags = #{} :: #{mcs_chan() => [binary()]},
     pingtimer :: undefined | reference(),
     lastpings = queue:new() :: queue:queue(integer()),
     pings = #{} :: #{integer() => integer()},

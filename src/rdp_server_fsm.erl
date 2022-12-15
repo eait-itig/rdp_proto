@@ -938,13 +938,17 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
     end;
 
 running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Chan}},
-        S = #state{chanfsms = Fsms, mcs = #mcs_state{them = Them, chans = Chans}}) ->
+        S = #state{chanfsms = Fsms, vchfrags = ChFrags0,
+                   mcs = #mcs_state{them = Them, chans = Chans}}) ->
     % data can come in on other static channels too, not just iochan
     #mcs_data{data = Data} = Pdu,
     case Chans of
         #{Chan := #tsud_net_channel{name = Name}} ->
-            case rdpp:decode_vchan(Data) of
+            Frags0 = maps:get(Chan, ChFrags0, []),
+            case rdpp:decode_vchan(Data, Frags0) of
                 {ok, VPkt = #ts_vchan{}} ->
+                    ChFrags1 = maps:remove(Chan, ChFrags0),
+                    S1 = S#state{vchfrags = ChFrags1},
                     case Fsms of
                         #{Chan := {Mod, Pid}} ->
                             ok = Mod:handle_pdu(Pid, VPkt);
@@ -953,7 +957,11 @@ running({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Chan}},
                                 "unhandled data on vchannel ~p (~p): ~s",
                                 [Name, Chan, rdpp:pretty_print(VPkt)])
                     end,
-                    {next_state, running, S};
+                    {next_state, running, S1};
+                {fragment, Frags1} ->
+                    ChFrags1 = ChFrags0#{Chan => Frags1},
+                    S1 = S#state{vchfrags = ChFrags1},
+                    {next_state, running, S1};
                 _ ->
                     _ = lager:warning("got invalid data on vchannel ~p (~p): ~p", [Name, Chan, Data]),
                     {next_state, running, S}

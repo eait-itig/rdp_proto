@@ -42,7 +42,7 @@
 -export([encode_basic/1, encode_sharecontrol/1]).
 -export([encode_ts_order/1, encode_ts_update_bitmaps/1]).
 -export([decode_ts_confirm/2]).
--export([encode_vchan/1, decode_vchan/1]).
+-export([encode_vchan/1, decode_vchan/2]).
 -export([pretty_print/1]).
 -export([encode_compr_flags/1, decode_compr_flags/1]).
 
@@ -249,14 +249,28 @@ encode_vchan(#ts_vchan{flags = FlagList, data = Data}) ->
     Len = byte_size(Data),
     <<Len:32/little, Flags:32/little, Data/binary>>.
 
--spec decode_vchan(binary()) -> {ok, #ts_vchan{}} | {error, term()}.
-decode_vchan(<<Len:32/little, Flags:32/little, Data:Len/binary, Pad/binary>>) ->
+-spec decode_vchan(binary(), [binary()]) -> {ok, #ts_vchan{}} |
+    {fragment, [binary()]} | {error, term()}.
+decode_vchan(<<Len:32/little, Flags:32/little, Rest/binary>>, Frags0) ->
     FlagList = decode_vchan_flags(Flags),
-    PadLen = 8*byte_size(Pad),
-    <<0:PadLen>> = Pad,
-    {ok, #ts_vchan{flags = FlagList, data = Data}};
-
-decode_vchan(_) ->
+    case {lists:member(first, FlagList), lists:member(last, FlagList)} of
+        {true, true} ->
+            <<Data:Len/binary, Pad/binary>> = Rest,
+            PadLen = 8*byte_size(Pad),
+            <<0:PadLen>> = Pad,
+            {ok, #ts_vchan{flags = FlagList, data = Data}};
+        {false, true} ->
+            <<Data:Len/binary, Pad/binary>> = iolist_to_binary(
+                lists:reverse([Rest | Frags0])),
+            PadLen = 8*byte_size(Pad),
+            <<0:PadLen>> = Pad,
+            {ok, #ts_vchan{flags = [first | FlagList], data = Data}};
+        {true, false} ->
+            {fragment, [Rest]};
+        {false, false} ->
+            {fragment, [Rest | Frags0]}
+    end;
+decode_vchan(_, _) ->
     {error, bad_packet}.
 
 encode_sharecontrol(Pdu) ->
