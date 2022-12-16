@@ -56,6 +56,20 @@ begin_transaction(S0 = #?MODULE{scard = SC0}) ->
     case rdpdr_scard:begin_txn(SC0) of
         {ok, SC1} ->
             {ok, S0#?MODULE{scard = SC1}};
+        {error, {scard, reset_card}} ->
+            case rdpdr_scard:reconnect(reset, SC0) of
+                {ok, _Mode, SC1} ->
+                    begin_transaction(S0#?MODULE{scard = SC1});
+                Err ->
+                    Err
+            end;
+        {error, {scard, unpowered_card}} ->
+            case rdpdr_scard:reconnect(unpower, SC0) of
+                {ok, _Mode, SC1} ->
+                    begin_transaction(S0#?MODULE{scard = SC1});
+                Err ->
+                    Err
+            end;
         Err ->
             Err
     end.
@@ -72,6 +86,20 @@ command({Proto, Data}, S0 = #?MODULE{scard = SC0}) ->
     case rdpdr_scard:transceive(Data, SC0) of
         {ok, RespData, SC1} ->
             {ok, [{Proto, RespData}], [], S0#?MODULE{scard = SC1}};
+        {error, {scard, reset_card}} ->
+            case rdpdr_scard:reconnect(reset, SC0) of
+                {ok, _Mode, SC1} ->
+                    command({Proto, Data}, S0#?MODULE{scard = SC1});
+                Err ->
+                    Err
+            end;
+        {error, {scard, unpowered_card}} ->
+            case rdpdr_scard:reconnect(unpower, SC0) of
+                {ok, _Mode, SC1} ->
+                    command({Proto, Data}, S0#?MODULE{scard = SC1});
+                Err ->
+                    Err
+            end;
         Err ->
             Err
     end.

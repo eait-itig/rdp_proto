@@ -39,7 +39,8 @@
     begin_txn/1,
     end_txn/2,
     transceive/2,
-    reconnect/4
+    reconnect/4,
+    reconnect/2
     ]).
 
 -export_type([
@@ -322,7 +323,9 @@ decode_dispos(3) -> eject.
     scope :: scard_scope(),
     ctx :: #redir_scardcontext{},
     hdl :: undefined | #redir_scardhandle{},
-    proto :: undefined | protocol_id()
+    proto :: undefined | protocol_id(),
+    share_mode :: undefined | share_mode(),
+    req_proto :: undefined | protocol_id()
     }).
 
 -opaque state() :: #?MODULE{}.
@@ -416,13 +419,20 @@ connect(Reader, ShareMode, ProtoId, S0 = #?MODULE{ctx = Ctx, hdl = undefined}) -
     case do_ioctl(IOC, Call, Enc, Dec, S0) of
         {ok, #connect_return{code = 0, handle = Hdl0, proto = Proto}} ->
             Hdl1 = Hdl0#redir_scardhandle{ctx = Ctx},
-            S1 = S0#?MODULE{hdl = Hdl1, proto = Proto},
+            S1 = S0#?MODULE{hdl = Hdl1, proto = Proto, req_proto = ProtoId,
+                            share_mode = ShareMode},
             {ok, Proto, S1};
         {ok, #connect_return{code = ErrCode}} ->
             {error, {scard, scard_err_to_atom(ErrCode)}};
         Err ->
             Err
     end.
+
+-spec reconnect(disposition(), state()) -> {ok, protocol_id(), state()} |
+    {error, term()}.
+reconnect(Dispos, S0 = #?MODULE{hdl = Hdl, req_proto = ProtoId,
+                                share_mode = ShareMode}) when not (Hdl =:= undefined) ->
+    reconnect(ShareMode, ProtoId, Dispos, S0).
 
 -spec reconnect(share_mode(), protocol_id(), disposition(), state()) ->
     {ok, protocol_id(), state()} | {error, term()}.
