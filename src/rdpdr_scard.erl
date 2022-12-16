@@ -38,7 +38,8 @@
     disconnect/2,
     begin_txn/1,
     end_txn/2,
-    transceive/2
+    transceive/2,
+    reconnect/4
     ]).
 
 -export_type([
@@ -90,6 +91,7 @@
 -define(SCARD_IOCTL_BEGINTRANSACTION,   16#000900BC).
 -define(SCARD_IOCTL_ENDTRANSACTION,     16#000900C0).
 -define(SCARD_IOCTL_TRANSMIT,           16#000900D0).
+-define(SCARD_IOCTL_RECONNECT,          16#000900B4).
 
 -record(redir_scardcontext, {
     len :: size_of(ctx, ulong()),
@@ -159,6 +161,18 @@
 -record(connect_return, {
     code :: ulong(),
     handle :: #redir_scardhandle{},
+    proto :: protocol_id()
+    }).
+
+-record(reconnect_call, {
+    handle :: #redir_scardhandle{},
+    share_mode :: share_mode(),
+    pref_protos :: protocol_id(),
+    init :: disposition()
+    }).
+
+-record(reconnect_return, {
+    code :: ulong(),
     proto :: protocol_id()
     }).
 
@@ -299,6 +313,8 @@ decode_dispos(3) -> eject.
 -rpce_stream({req_hcard_and_dispos, [hcard_and_dispos_call]}).
 -rpce_stream({req_transmit, [transmit_call]}).
 -rpce_stream({resp_transmit, [transmit_return]}).
+-rpce_stream({req_reconnect, [reconnect_call]}).
+-rpce_stream({resp_reconnect, [reconnect_return]}).
 
 -record(?MODULE, {
     rdpdr :: pid(),
@@ -341,7 +357,7 @@ open(Pid, DevId, Scope) ->
             {ok, #?MODULE{rdpdr = Pid, devid = DevId, scope = Scope,
                           ctx = Ctx}};
         {ok, #establish_context_return{code = ErrCode}} ->
-            {error, {scard, ErrCode}};
+            {error, {scard, scard_err_to_atom(ErrCode)}};
         Err ->
             Err
     end.
@@ -367,7 +383,7 @@ list_groups(S0 = #?MODULE{ctx = Ctx}) ->
         {ok, #list_groups_return{code = 0, groups = Groups}} ->
             {ok, Groups, S0};
         {ok, #list_groups_return{code = ErrCode}} ->
-            {error, {scard, ErrCode}};
+            {error, {scard, scard_err_to_atom(ErrCode)}};
         Err ->
             Err
     end.
@@ -383,12 +399,13 @@ list_readers(Group, S0 = #?MODULE{ctx = Ctx}) ->
         {ok, #list_readers_return{code = 0, readers = Readers}} ->
             {ok, Readers, S0};
         {ok, #list_readers_return{code = ErrCode}} ->
-            {error, {scard, ErrCode}};
+            {error, {scard, scard_err_to_atom(ErrCode)}};
         Err ->
             Err
     end.
 
--spec connect(string(), share_mode(), protocol_id(), state()) -> {ok, protocol_id(), state()} | {error, term()}.
+-spec connect(string(), share_mode(), protocol_id(), state()) ->
+    {ok, protocol_id(), state()} | {error, term()}.
 connect(Reader, ShareMode, ProtoId, S0 = #?MODULE{ctx = Ctx, hdl = undefined}) ->
     Common = #connect_common{ctx = Ctx, share_mode = ShareMode,
                              pref_protos = ProtoId},
@@ -402,7 +419,26 @@ connect(Reader, ShareMode, ProtoId, S0 = #?MODULE{ctx = Ctx, hdl = undefined}) -
             S1 = S0#?MODULE{hdl = Hdl1, proto = Proto},
             {ok, Proto, S1};
         {ok, #connect_return{code = ErrCode}} ->
-            {error, {scard, ErrCode}};
+            {error, {scard, scard_err_to_atom(ErrCode)}};
+        Err ->
+            Err
+    end.
+
+-spec reconnect(share_mode(), protocol_id(), disposition(), state()) ->
+    {ok, protocol_id(), state()} | {error, term()}.
+reconnect(ShareMode, ProtoId, Dispos, S0 = #?MODULE{hdl = Hdl})
+                                            when not (Hdl =:= undefined) ->
+    Call = #reconnect_call{handle = Hdl, share_mode = ShareMode,
+                           pref_protos = ProtoId, init = Dispos},
+    IOC = ?SCARD_IOCTL_RECONNECT,
+    Enc = fun encode_req_reconnect/1,
+    Dec = fun decode_resp_reconnect/1,
+    case do_ioctl(IOC, Call, Enc, Dec, S0) of
+        {ok, #reconnect_return{code = 0, proto = Proto}} ->
+            S1 = S0#?MODULE{proto = Proto},
+            {ok, Proto, S1};
+        {ok, #reconnect_return{code = ErrCode}} ->
+            {error, {scard, scard_err_to_atom(ErrCode)}};
         Err ->
             Err
     end.
@@ -418,7 +454,7 @@ disconnect(Dispos, S0 = #?MODULE{hdl = Hdl}) when not (Hdl =:= undefined) ->
             S1 = S0#?MODULE{hdl = undefined},
             {ok, S1};
         {ok, #long_return{code = ErrCode}} ->
-            {error, {scard, ErrCode}};
+            {error, {scard, scard_err_to_atom(ErrCode)}};
         Err ->
             Err
     end.
@@ -433,7 +469,7 @@ begin_txn(S0 = #?MODULE{hdl = Hdl}) when not (Hdl =:= undefined) ->
         {ok, #long_return{code = 0}} ->
             {ok, S0};
         {ok, #long_return{code = ErrCode}} ->
-            {error, {scard, ErrCode}};
+            {error, {scard, scard_err_to_atom(ErrCode)}};
         Err ->
             Err
     end.
@@ -448,7 +484,7 @@ end_txn(Dispos, S0 = #?MODULE{hdl = Hdl}) when not (Hdl =:= undefined) ->
         {ok, #long_return{code = 0}} ->
             {ok, S0};
         {ok, #long_return{code = ErrCode}} ->
-            {error, {scard, ErrCode}};
+            {error, {scard, scard_err_to_atom(ErrCode)}};
         Err ->
             Err
     end.
@@ -467,7 +503,68 @@ transceive(DataIn, S0 = #?MODULE{hdl = Hdl}) when not (Hdl =:= undefined) ->
         {ok, #transmit_return{code = 0, data = DataOut}} ->
             {ok, DataOut, S0};
         {ok, #transmit_return{code = ErrCode}} ->
-            {error, {scard, ErrCode}};
+            {error, {scard, scard_err_to_atom(ErrCode)}};
         Err ->
             Err
     end.
+
+scard_err_to_atom(16#00000000) -> success;
+scard_err_to_atom(16#80100001) -> internal_error;
+scard_err_to_atom(16#80100002) -> cancelled;
+scard_err_to_atom(16#80100003) -> invalid_handle;
+scard_err_to_atom(16#80100004) -> invalid_parameter;
+scard_err_to_atom(16#80100005) -> invalid_target;
+scard_err_to_atom(16#80100006) -> no_memory;
+scard_err_to_atom(16#80100007) -> waited_too_long;
+scard_err_to_atom(16#80100008) -> insufficient_buffer;
+scard_err_to_atom(16#80100009) -> unknown_reader;
+scard_err_to_atom(16#8010000A) -> timeout;
+scard_err_to_atom(16#8010000B) -> sharing_violation;
+scard_err_to_atom(16#8010000C) -> no_smartcard;
+scard_err_to_atom(16#8010000D) -> unknown_card;
+scard_err_to_atom(16#8010000E) -> cant_dispose;
+scard_err_to_atom(16#8010000F) -> proto_mismatch;
+scard_err_to_atom(16#80100010) -> not_ready;
+scard_err_to_atom(16#80100011) -> invalid_value;
+scard_err_to_atom(16#80100012) -> system_cancelled;
+scard_err_to_atom(16#80100013) -> comm_error;
+scard_err_to_atom(16#80100014) -> unknown_error;
+scard_err_to_atom(16#80100015) -> invalid_atr;
+scard_err_to_atom(16#80100016) -> not_transacted;
+scard_err_to_atom(16#80100017) -> reader_unavailable;
+scard_err_to_atom(16#80100019) -> pci_too_small;
+scard_err_to_atom(16#8010001A) -> reader_unsupported;
+scard_err_to_atom(16#8010001B) -> duplicate_reader;
+scard_err_to_atom(16#8010001C) -> card_unsupported;
+scard_err_to_atom(16#8010001D) -> no_service;
+scard_err_to_atom(16#8010001E) -> service_stopped;
+scard_err_to_atom(16#8010001F) -> unsupported_feature;
+scard_err_to_atom(16#80100020) -> icc_installation;
+scard_err_to_atom(16#80100021) -> icc_createorder;
+scard_err_to_atom(16#80100023) -> dir_not_found;
+scard_err_to_atom(16#80100024) -> file_not_found;
+scard_err_to_atom(16#80100025) -> no_dir;
+scard_err_to_atom(16#80100026) -> no_file;
+scard_err_to_atom(16#80100027) -> no_access;
+scard_err_to_atom(16#80100028) -> write_too_many;
+scard_err_to_atom(16#80100029) -> bad_seek;
+scard_err_to_atom(16#8010002A) -> invalid_chv;
+scard_err_to_atom(16#8010002B) -> unknown_res_mng;
+scard_err_to_atom(16#8010002C) -> no_such_certificate;
+scard_err_to_atom(16#8010002D) -> certificate_unavailable;
+scard_err_to_atom(16#8010002E) -> no_readers_available;
+scard_err_to_atom(16#8010002F) -> comm_data_lost;
+scard_err_to_atom(16#80100030) -> no_key_container;
+scard_err_to_atom(16#80100031) -> server_too_busy;
+scard_err_to_atom(16#80100065) -> unsupported_card;
+scard_err_to_atom(16#80100066) -> unresponsive_card;
+scard_err_to_atom(16#80100067) -> unpowered_card;
+scard_err_to_atom(16#80100068) -> reset_card;
+scard_err_to_atom(16#80100069) -> removed_card;
+scard_err_to_atom(16#8010006A) -> security_violation;
+scard_err_to_atom(16#8010006B) -> wrong_chv;
+scard_err_to_atom(16#8010006C) -> chv_blocked;
+scard_err_to_atom(16#8010006D) -> eof;
+scard_err_to_atom(16#8010006E) -> cancelled_by_user;
+scard_err_to_atom(16#8010006F) -> card_not_authenticated;
+scard_err_to_atom(Other) -> Other.
