@@ -78,6 +78,8 @@ end_transaction(Dispos, S0 = #?MODULE{scard = SC0}) ->
     case rdpdr_scard:end_txn(Dispos, SC0) of
         {ok, SC1} ->
             {ok, Dispos, S0#?MODULE{scard = SC1}};
+        {error, {scard, not_transacted}} ->
+            {ok, leave, S0};
         Err ->
             Err
     end.
