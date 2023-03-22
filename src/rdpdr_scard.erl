@@ -399,10 +399,22 @@ list_readers(Group, S0 = #?MODULE{ctx = Ctx}) ->
     Enc = fun encode_req_list_readers/1,
     Dec = fun decode_resp_list_readers/1,
     case do_ioctl(IOC, Call, Enc, Dec, S0) of
+        {ok, #list_readers_return{code = 0, readers = undefined, len = Len}} ->
+            % Despite the fact that we asked for it to auto-allocate, it's given
+            % us an explicit length... try again, I guess!
+            Call2 = Call#list_readers_call{expect_len = Len},
+            case do_ioctl(IOC, Call2, Enc, Dec, S0) of
+                {ok, #list_readers_return{code = 0, readers = Readers}} ->
+                    {ok, Readers, S0};
+                {ok, #list_readers_return{code = ErrCode}} ->
+                    {error, {scard, ErrCode}};
+                Err ->
+                    Err
+            end;
         {ok, #list_readers_return{code = 0, readers = Readers}} ->
             {ok, Readers, S0};
         {ok, #list_readers_return{code = ErrCode}} ->
-            {error, {scard, scard_err_to_atom(ErrCode)}};
+            {error, {scard, ErrCode}};
         Err ->
             Err
     end.
