@@ -186,6 +186,17 @@ caps_exchange(cast, {pdu, #rdpdr_client_caps{caps = Caps}}, S0 = #?MODULE{}) ->
 caps_exchange(cast, {pdu, #rdpdr_device_announce{}}, S0 = #?MODULE{}) ->
     {keep_state, S0, [postpone]};
 
+caps_exchange(cast, {pdu, #rdpdr_client_name_req{name = ClientName}},
+                                S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
+    #?MODULE{clientid = CID} = S0,
+    S1 = S0#?MODULE{cname = ClientName},
+    ConfirmData = rdpdr:encode(#rdpdr_clientid_confirm{clientid = CID}),
+    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
+        flags = [first, last],
+        data = ConfirmData
+    }),
+    {keep_state, S1};
+
 caps_exchange(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
     decode_vpdu(VPdu, S0).
 
