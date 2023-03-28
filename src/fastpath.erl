@@ -91,7 +91,7 @@ decode_inp_events(<<Code:3, Flags:5, Rest/binary>>) ->
             <<PointerFlags:16/little, X:16/little, Y:16/little, Rem/binary>> = Rest,
             <<Down:1, Button3:1, Button2:1, Button1:1, Move:1, _:1, Wheel:1, WheelNegative:1, Clicks:8>> = <<PointerFlags:16/big>>,
             if Wheel == 1 ->
-                SignedClicks = if WheelNegative == 1 -> (0 - Clicks); true -> Clicks end,
+                SignedClicks = if WheelNegative == 1 -> (-256 + Clicks); true -> Clicks end,
                 [#ts_inpevt_wheel{point = {X,Y}, clicks = SignedClicks} | decode_inp_events(Rem)];
             true ->
                 Action = if Move == 1 -> move; Down == 1 -> down; true -> up end,

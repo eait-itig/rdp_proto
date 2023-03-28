@@ -1129,7 +1129,7 @@ decode_ts_inpevt(16#8001, Bin) ->
     <<Flags:16/little, X:16/little, Y:16/little, Rest/binary>> = Bin,
     <<Down:1, Button3:1, Button2:1, Button1:1, Move:1, _:1, Wheel:1, WheelNegative:1, Clicks:8>> = <<Flags:16/big>>,
     if Wheel == 1 ->
-        SignedClicks = if WheelNegative == 1 -> (0 - Clicks); true -> Clicks end,
+        SignedClicks = if WheelNegative == 1 -> (-256 + Clicks); true -> Clicks end,
         {#ts_inpevt_wheel{point = {X,Y}, clicks = SignedClicks}, Rest};
     true ->
         Action = if Move == 1 -> move; Down == 1 -> down; true -> up end,
