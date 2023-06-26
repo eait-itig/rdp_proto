@@ -890,16 +890,19 @@ running(check_ping, S = #state{pings = Pings0,
             {next_state, running, S}
     end;
 
-running({send_redirect, Cookie, SessId, _Hostname},
+running({send_redirect, Opts},
         S = #state{shareid = ShareId,
             mcs = #mcs_state{us = Us, iochan = IoChan}}) ->
+    #{session_id := SessId, cookie := Cookie} = Opts,
+    Flags = maps:get(flags, Opts, []),
     {ok, Redir} = rdpp:encode_sharecontrol(
         #ts_redir{
             channel = Us,
             shareid = ShareId,
             sessionid = SessId,
-            flags = [],
-            cookie = <<Cookie/binary, 16#0d, 16#0a>> }),
+            flags = Flags,
+            cookie = <<Cookie/binary, 16#0d, 16#0a>>
+        }),
     ok = rdp_server:send({self(), S}, #mcs_srv_data{
         user = Us, channel = IoChan, data = Redir}),
     timer:sleep(500),

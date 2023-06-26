@@ -36,7 +36,7 @@
     send/2, send_raw/2, send_update/2, start_tls/3,
     mcs_state/1, x224_state/1, get_tsuds/1, get_caps/1,
     get_canvas/1, get_redir_support/1, get_autologon/1,
-    send_redirect/4, close/1, watch_child/2, get_peer/1,
+    send_redirect/4, send_redirect/2, close/1, watch_child/2, get_peer/1,
     send_vchan/3, get_vchan_pid/2, get_pings/1, get_shell/1,
     get_ts_info/1
     ]).
@@ -228,7 +228,12 @@ get_shell(Srv) ->
 
 -spec send_redirect(server(), Cookie :: binary(), SessId :: integer(), Hostname :: binary()) -> ok | {error, term()}.
 send_redirect({Pid, _}, Cookie, SessId, Hostname) ->
-    gen_fsm:send_event(Pid, {send_redirect, Cookie, SessId, Hostname}).
+    gen_fsm:send_event(Pid, {send_redirect, #{cookie => Cookie, session_id => SessId,
+        hostname => Hostname}}).
+
+-spec send_redirect(server(), #{cookie => binary(), session_id => integer(), hostname => binary(), flags => [atom()]}) -> ok | {error, term()}.
+send_redirect({Pid, _}, Opts) ->
+    gen_fsm:send_event(Pid, {send_redirect, Opts}).
 
 -spec watch_child(server(), pid()) -> ok.
 watch_child({Pid, _}, Kid) ->

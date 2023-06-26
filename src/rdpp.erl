@@ -153,6 +153,9 @@ pretty_print(_, _) ->
     disable_salute, mouse
     ]}).
 -bitset({compr_flags, [flushed, at_front, compressed, skip, {type,4}]}).
+-bitset({ts_redir_flags, [{skip,15}, cert, guid, pw_encrypted, tsv_capable,
+    tsv_url, net_addresses, netbios_name, fqdn, info_only, smartcard,
+    logon, password, domain, username, cookie, net_address]}).
 
 decode_client(Bin) ->
     decode(Bin, decode_output).
@@ -722,74 +725,45 @@ encode_ts_deactivate(#ts_deactivate{shareid = ShareId, sourcedesc = SourceDescIn
 decode_ts_redir(Chan, _Bin) ->
     {ok, #ts_redir{channel = Chan}}.
 
-encode_ts_redir(#ts_redir{sessionid = Session, username = Username, domain = Domain, password = Password, cookie = Cookie, flags = Flags, address = NetAddress, fqdn = Fqdn}) ->
-    InfoOnly = case lists:member(info_only, Flags) of true -> 1; _ -> 0 end,
-    Smartcard = case lists:member(smartcard, Flags) of true -> 1; _ -> 0 end,
-    Logon = case lists:member(logon, Flags) of true -> 1; _ -> 0 end,
-
-    HasCookie = if is_binary(Cookie) and (byte_size(Cookie) > 0) -> 1; true -> 0 end,
-    HasUsername = if is_binary(Username) and (byte_size(Username) > 0) -> 1; true -> 0 end,
-    HasDomain = if is_binary(Domain) and (byte_size(Domain) > 0) -> 1; true -> 0 end,
-    HasPassword = if is_binary(Password) and (byte_size(Password) > 0) -> 1; true -> 0 end,
-    HasNetAddress = if is_binary(NetAddress) and (byte_size(NetAddress) > 0) -> 1; true -> 0 end,
-    HasFqdn = if is_binary(Fqdn) and (byte_size(Fqdn) > 0) -> 1; true -> 0 end,
-
-    %if (HasNetAddress == 1) andalso (HasCookie == 1) ->
-    %   error(cookie_and_netaddr);
-    %true -> ok end,
-
-    UseCookieForTsv = 0,
-    HasTsvUrl = 0,
-    HasMultiNetAddr = 0,
-    HasNetBios = 0,
-
-    <<RedirFlags:32/big>> = <<0:19, UseCookieForTsv:1, HasTsvUrl:1, HasMultiNetAddr:1, HasNetBios:1, HasFqdn:1, InfoOnly:1, Smartcard:1, Logon:1, HasPassword:1, HasDomain:1, HasUsername:1, HasCookie:1, HasNetAddress:1>>,
-
-    maybe([
-        fun() ->
-            {continue, [<<Session:32/little, RedirFlags:32/little>>]}
+encode_ts_redir(#ts_redir{sessionid = Session, username = Username, domain = Domain, password = Password, cookie = Cookie, flags = F0, address = NetAddress, fqdn = Fqdn}) ->
+    F1 = F0 ++
+        if is_binary(Cookie) and (byte_size(Cookie) > 0) -> [cookie]; true -> [] end ++
+        if is_binary(Username) and (byte_size(Username) > 0) -> [username]; true -> [] end ++
+        if is_binary(Domain) and (byte_size(Domain) > 0) -> [domain]; true -> [] end ++
+        if is_binary(Password) and (byte_size(Password) > 0) -> [password]; true -> [] end ++
+        if is_binary(NetAddress) and (byte_size(NetAddress) > 0) -> [net_address]; true -> [] end ++
+        if is_binary(Fqdn) and (byte_size(Fqdn) > 0) -> [fqdn]; true -> [] end,
+    RedirFlags = encode_ts_redir_flags(F1),
+    Parts = [
+        <<Session:32/little, RedirFlags:32/little>>,
+        case lists:member(net_address, F1) of
+            true -> <<(byte_size(NetAddress)):32/little, NetAddress/binary>>;
+            false -> []
         end,
-        fun(Base) ->
-            {continue, [if HasNetAddress == 1 ->
-                S = byte_size(NetAddress),
-                <<Base/binary, S:32/little, NetAddress/binary>>;
-            true -> Base end]}
+        case lists:member(cookie, F1) of
+            true -> <<(byte_size(Cookie)):32/little, Cookie/binary>>;
+            false -> []
         end,
-        fun(Base) ->
-            {continue, [if HasCookie == 1 ->
-                S = byte_size(Cookie),
-                <<Base/binary, S:32/little, Cookie/binary>>;
-            true -> Base end]}
+        case lists:member(username, F1) of
+            true -> <<(byte_size(Username)):32/little, Username/binary>>;
+            false -> []
         end,
-        fun(Base) ->
-            {continue, [if HasUsername == 1 ->
-                S = byte_size(Username),
-                <<Base/binary, S:32/little, Username/binary>>;
-            true -> Base end]}
+        case lists:member(domain, F1) of
+            true -> <<(byte_size(Domain)):32/little, Domain/binary>>;
+            false -> []
         end,
-        fun(Base) ->
-            {continue, [if HasDomain == 1 ->
-                S = byte_size(Domain),
-                <<Base/binary, S:32/little, Domain/binary>>;
-            true -> Base end]}
+        case lists:member(password, F1) of
+            true -> <<(byte_size(Password)):32/little, Password/binary>>;
+            false -> []
         end,
-        fun(Base) ->
-            {continue, [if HasPassword == 1 ->
-                S = byte_size(Password),
-                <<Base/binary, S:32/little, Password/binary>>;
-            true -> Base end]}
+        case lists:member(fqdn, F1) of
+            true -> <<(byte_size(Fqdn)):32/little, Fqdn/binary>>;
+            false -> []
         end,
-        fun(Base) ->
-            {continue, [if HasFqdn == 1 ->
-                S = byte_size(Fqdn),
-                <<Base/binary, S:32/little, Fqdn/binary>>;
-            true -> Base end]}
-        end,
-        fun(Payload) ->
-            Len = byte_size(Payload) + 4,
-            {return, <<0:16, 16#0400:16/little, Len:16/little, Payload/binary, 0:9/unit:8>>}
-        end
-    ], []).
+        <<0:64>>
+    ],
+    Payload = iolist_to_binary(Parts),
+    <<0:16, 16#0400:16/little, (byte_size(Payload)):16/little, Payload/binary>>.
 
 strip_compr_type([]) -> {{type, 0}, []};
 strip_compr_type([type | Rest]) -> {{type,1}, Rest};
