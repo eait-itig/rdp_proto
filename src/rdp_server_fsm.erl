@@ -895,12 +895,22 @@ running({send_redirect, Opts},
             mcs = #mcs_state{us = Us, iochan = IoChan}}) ->
     #{session_id := SessId, cookie := Cookie} = Opts,
     Flags = maps:get(flags, Opts, []),
+    Fqdn = case maps:get(fqdn, Opts, undefined) of
+        undefined -> [];
+        FqdnStr -> unicode:characters_to_binary([FqdnStr, 0], unicode, {utf16, little})
+    end,
+    NetAddress = case maps:get(address, Opts, undefined) of
+        undefined -> [];
+        NetAddrStr -> unicode:characters_to_binary([NetAddrStr, 0], unicode, {utf16, little})
+    end,
     {ok, Redir} = rdpp:encode_sharecontrol(
         #ts_redir{
             channel = Us,
             shareid = ShareId,
             sessionid = SessId,
             flags = Flags,
+            fqdn = Fqdn,
+            address = NetAddress,
             cookie = <<Cookie/binary, 16#0d, 16#0a>>
         }),
     ok = rdp_server:send({self(), S}, #mcs_srv_data{

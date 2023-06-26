@@ -52,6 +52,7 @@ init(_Peer) ->
     {ok, #state{}}.
 
 handle_connect(Cookie, Protocols, Srv, S = #state{}) ->
+    lager:debug("cookie = ~p, protocols = ~p", [Cookie, Protocols]),
     {accept, [{certfile, "etc/cert.pem"}, {keyfile, "etc/key.pem"}], S}.
     % SslOptions should probably contain at least [{certfile, ...}, {keyfile, ...}]
 
@@ -61,15 +62,15 @@ choose_format(Preferred, Supported, S = #state{}) ->
 
 init_ui(Srv, S = #state{}) ->
     % draw your initial ui here, eg:
-    {W, H, Bpp} = rdp_server:get_canvas(Srv),
-    ok = rdp_server:send_update(Srv, #ts_update_orders{orders = [
-            #ts_order_opaquerect{
-                dest = {round(W/2 - 50), round(H/2 - 50)},
-                size = {100,100},
-                bpp = Bpp,
-                color = {100, 0, 0}  % red,green,blue 0-255
-            }
-        ]}),
+    % {W, H, Bpp} = rdp_server:get_canvas(Srv),
+    % ok = rdp_server:send_update(Srv, #ts_update_orders{orders = [
+    %         #ts_order_opaquerect{
+    %             dest = {round(W/2 - 50), round(H/2 - 50)},
+    %             size = {100,100},
+    %             bpp = Bpp,
+    %             color = {100, 0, 0}  % red,green,blue 0-255
+    %         }
+    %     ]}),
     {ok, S}.
 
 handle_event(#ts_inpevt_mouse{point = {X,Y}, action=move}, Srv, S = #state{}) ->
@@ -83,7 +84,12 @@ handle_event(#ts_inpevt_mouse{action = down}, Srv, S = #state{}) ->
         Res = cliprdr_fsm:copy(D, #{
             text => binary:copy(<<"hello">>, 300)
             }),
-        lager:debug("cliprdr copy = ~p", [Res])
+        lager:debug("cliprdr copy = ~p", [Res]),
+        ok = rdp_server:send_redirect(Srv, #{
+            session_id => 1234,
+            cookie => <<"foobar">>,
+            flags => [smartcard]
+        })
     end),
     {ok, S};
 
@@ -91,6 +97,10 @@ handle_event(#ts_inpevt_mouse{}, Srv, S = #state{}) ->
     {ok, S};
 
 handle_event(#ts_inpevt_key{}, Srv, S = #state{}) ->
+    {ok, S};
+
+handle_event(#ts_inpevt_unicode{}, Srv, S = #state{}) ->
+    ok = rdp_server:send_redirect(Srv, <<"foobar">>, 1234, <<"none">>),
     {ok, S};
 
 handle_event(#ts_inpevt_sync{}, Srv, S = #state{}) ->
