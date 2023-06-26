@@ -297,17 +297,16 @@ decode_vchan(_, _) ->
     {error, bad_packet}.
 
 encode_sharecontrol(Pdu) ->
-    {InnerType, Inner} = case Pdu of
-        #ts_demand{} -> {16#1, encode_ts_demand(Pdu)};
-        #ts_confirm{} -> {16#3, encode_ts_confirm(Pdu)};
-        #ts_deactivate{} -> {16#6, encode_ts_deactivate(Pdu)};
-        #ts_redir{} -> {16#a, encode_ts_redir(Pdu)};
-        #ts_sharedata{} -> {16#7, encode_sharedata(Pdu)}
+    {Version, InnerType, Inner} = case Pdu of
+        #ts_demand{} ->     {1, 16#1, encode_ts_demand(Pdu)};
+        #ts_confirm{} ->    {1, 16#3, encode_ts_confirm(Pdu)};
+        #ts_deactivate{} -> {1, 16#6, encode_ts_deactivate(Pdu)};
+        #ts_redir{} ->      {0, 16#a, encode_ts_redir(Pdu)};
+        #ts_sharedata{} ->  {1, 16#7, encode_sharedata(Pdu)}
     end,
     Channel = element(2, Pdu),
     Length = byte_size(Inner) + 6,
     true = (Length < 1 bsl 16),
-    Version = 16#01,
     <<Type:16/big>> = <<Version:12/big, InnerType:4>>,
     {ok, <<Length:16/little, Type:16/little, Channel:16/little, Inner/binary>>}.
 
