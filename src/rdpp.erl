@@ -759,10 +759,10 @@ encode_ts_redir(#ts_redir{sessionid = Session, username = Username, domain = Dom
             true -> <<(byte_size(Fqdn)):32/little, Fqdn/binary>>;
             false -> []
         end,
-        <<0:64>>
+        binary:copy(<<16#c0>>, 8)
     ],
     Payload = iolist_to_binary(Parts),
-    <<0:16, 16#0400:16/little, (byte_size(Payload)):16/little, Payload/binary>>.
+    <<0:16, 16#0400:16/little, (byte_size(Payload)):16/little, Payload/binary, 0>>.
 
 strip_compr_type([]) -> {{type, 0}, []};
 strip_compr_type([type | Rest]) -> {{type,1}, Rest};
