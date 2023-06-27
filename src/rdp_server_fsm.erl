@@ -918,6 +918,9 @@ running({send_redirect, Opts},
     ok = rdp_server:send({self(), S}, #mcs_srv_data{
         user = Us, channel = IoChan, data = Redir}),
     timer:sleep(500),
+    ok = rdp_server:send({self(), S}, #mcs_srv_data{
+        user = Us, channel = IoChan, data = Redir}),
+    timer:sleep(5000),
 
     running(close, S);
 
