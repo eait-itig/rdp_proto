@@ -827,6 +827,8 @@ running(close,
         ok ->
             _ = rdp_server:send({self(), S}, #mcs_dpu{}),
             timer:sleep(500),
+            ssl:shutdown(SslSock, write),
+            timer:sleep(500),
             ssl:close(SslSock),
             {stop, normal, S};
 
