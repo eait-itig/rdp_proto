@@ -997,7 +997,7 @@ running(Event, S = #state{mod = Mod, modstate = MS}) ->
             {stop, Reason, S#state{modstate = MS2}}
     end.
 
-resend_redir(_McsPkt, Sleep, S = #state{}) when (Sleep > 5000) ->
+resend_redir(_McsPkt, Sleep, S = #state{}) when (Sleep > 10000) ->
     lager:debug("client refusing to close after ts_redir, sending a DPU"),
     running(close, S);
 resend_redir(McsPkt, Sleep, S = #state{sslsock = Sock}) ->
