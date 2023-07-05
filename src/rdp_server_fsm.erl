@@ -997,9 +997,12 @@ running(Event, S = #state{mod = Mod, modstate = MS}) ->
             {stop, Reason, S#state{modstate = MS2}}
     end.
 
-resend_redir(_McsPkt, Sleep, S = #state{}) when (Sleep > 10000) ->
-    lager:debug("client refusing to close after ts_redir, sending a DPU"),
-    running(close, S);
+resend_redir(_McsPkt, Sleep, S = #state{sock = Sock}) when (Sleep > 5000) ->
+    lager:debug("client refusing to close after ts_redir, forcing it"),
+    ssl:shutdown(Sock, write),
+    timer:sleep(500),
+    ssl:close(Sock),
+    {stop, normal, S};
 resend_redir(McsPkt, Sleep, S = #state{sslsock = Sock}) ->
     {ok, McsData} = mcsgcc:encode_dpdu(McsPkt),
     {ok, DtData} = x224:encode(#x224_dt{data = McsData}),
