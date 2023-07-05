@@ -915,14 +915,8 @@ running({send_redirect, Opts},
             address = NetAddress,
             cookie = <<Cookie/binary, 16#0d, 16#0a>>
         }),
-    ok = rdp_server:send({self(), S}, #mcs_srv_data{
-        user = Us, channel = IoChan, data = Redir}),
-    timer:sleep(500),
-    ok = rdp_server:send({self(), S}, #mcs_srv_data{
-        user = Us, channel = IoChan, data = Redir}),
-    timer:sleep(5000),
-
-    running(close, S);
+    McsPkt = #mcs_srv_data{user = Us, channel = IoChan, data = Redir},
+    resend_redir(McsPkt, 500, S);
 
 running({fp_pdu, #fp_pdu{contents = Evts}}, S = #state{}) ->
     do_events(Evts, S);
@@ -1001,6 +995,31 @@ running(Event, S = #state{mod = Mod, modstate = MS}) ->
             {next_state, running, S#state{modstate = MS2}};
         {stop, Reason, MS2} ->
             {stop, Reason, S#state{modstate = MS2}}
+    end.
+
+resend_redir(_McsPkt, Sleep, S = #state{}) when (Sleep > 5000) ->
+    lager:debug("client refusing to close after ts_redir, sending a DPU"),
+    running(close, S);
+resend_redir(McsPkt, Sleep, S = #state{sslsock = Sock}) ->
+    {ok, McsData} = mcsgcc:encode_dpdu(McsPkt),
+    {ok, DtData} = x224:encode(#x224_dt{data = McsData}),
+    {ok, Packet} = tpkt:encode(DtData),
+    case ssl:send(Sock, Packet) of
+        ok ->
+            receive
+                {ssl_closed, Sock} ->
+                    lager:debug("closed after ts_redir"),
+                    ssl:close(Sock),
+                    {stop, normal, S}
+            after Sleep ->
+                resend_redir(McsPkt, Sleep * 2, S)
+            end;
+        {error, closed} ->
+            lager:debug("closed after ts_redir"),
+            ssl:close(Sock),
+            {stop, normal, S};
+        Other ->
+            {stop, Other, S}
     end.
 
 do_events([], S) -> {next_state, running, S};
