@@ -147,16 +147,8 @@ client_name(enter, _PrevState, _S0 = #?MODULE{}) ->
 client_name({call, _}, _, #?MODULE{}) ->
     {keep_state_and_data, [postpone]};
 
-client_name(cast, {pdu, #rdpdr_client_name_req{name = ClientName}},
-                                S0 = #?MODULE{srv = Srv, chanid = ChanId}) ->
-    #?MODULE{clientid = CID} = S0,
-    S1 = S0#?MODULE{cname = ClientName},
-    ConfirmData = rdpdr:encode(#rdpdr_clientid_confirm{clientid = CID}),
-    ok = rdp_server:send_vchan(Srv, ChanId, #ts_vchan{
-        flags = [first, last],
-        data = ConfirmData
-    }),
-    {next_state, caps_exchange, S1};
+client_name(cast, {pdu, Pdu = #rdpdr_client_name_req{}}, S0 = #?MODULE{}) ->
+    {next_state, caps_exchange, S0, [postpone]};
 
 client_name(cast, {vpdu, VPdu}, S0 = #?MODULE{}) ->
     decode_vpdu(VPdu, S0).

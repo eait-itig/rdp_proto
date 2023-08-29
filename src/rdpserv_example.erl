@@ -36,6 +36,7 @@
 -include("rdpdr.hrl").
 
 -export([
+    start_link/0,
     init/1,
     handle_connect/4,
     init_ui/2,
@@ -44,6 +45,9 @@
     choose_format/3,
     handle_info/3
     ]).
+
+start_link() ->
+    rdp_server_sup:start_link(3389, ?MODULE).
 
 -record(state, {}).
 
