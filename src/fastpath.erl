@@ -177,7 +177,7 @@ encode_update({Type, Fragment, Data}, Compr) ->
             [<<0:2, Fragmentation:2, Type:4, Size:16/little, Data/binary>>];
         {MPPC, _} ->
             {ok, ComprData, ComprFlagAtoms} = mppc_nif:compress(MPPC, [Data]),
-            Size = byte_size(ComprData),
+            Size = iolist_size(ComprData),
             ComprLevel = case mppc_nif:get_level(MPPC) of
                 '8k' -> 0;
                 '64k' -> 1
@@ -185,7 +185,7 @@ encode_update({Type, Fragment, Data}, Compr) ->
             ComprFlags = rdpp:encode_compr_flags(ComprFlagAtoms ++
                 [{type, ComprLevel}]),
             [<<2:2, Fragmentation:2, Type:4, ComprFlags, Size:16/little,
-               ComprData/binary>>]
+               (iolist_to_binary(ComprData))/binary>>]
     end.
 
 encode_surface(#ts_surface_frame_marker{frame = FrameId, action = Action}) ->
