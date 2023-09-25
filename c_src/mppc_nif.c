@@ -197,6 +197,20 @@ mppcnif_compress(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 		    enif_make_atom(env, "mppc_compress_fail")));
 	}
 
+	/*
+	 * mppc_compress can return a reference to the input data, but "bin"
+	 * is transient and only exists for the duration of this NIF.
+	 *
+	 * If it does that, short-circuit and return the same term back to
+	 * Erlang to avoid unnecessary copying.
+	 */
+	if (out == bin.data && sz == bin.size) {
+		free(buf);
+		enif_mutex_unlock(mc->mc_lock);
+		rv = argv[1];
+		goto do_flags;
+	}
+
 	md = enif_alloc_resource(mppc_data_rsrc, sizeof (*md));
 	bzero(md, sizeof (*md));
 	md->md_ctx = mc;
@@ -205,6 +219,10 @@ mppcnif_compress(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
 	enif_mutex_unlock(mc->mc_lock);
 
+	rv = enif_make_resource_binary(env, md, out, sz);
+	enif_release_resource(md);
+
+do_flags:
 	flaglist = enif_make_list(env, 0);
 	if (flags & PACKET_COMPRESSED)
 		flaglist = enif_make_list_cell(env,
@@ -215,9 +233,6 @@ mppcnif_compress(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 	if (flags & PACKET_FLUSHED)
 		flaglist = enif_make_list_cell(env,
 		    enif_make_atom(env, "flushed"), flaglist);
-
-	rv = enif_make_resource_binary(env, md, out, sz);
-	enif_release_resource(md);
 
 	return (enif_make_tuple3(env,
 	    enif_make_atom(env, "ok"), rv, flaglist));
