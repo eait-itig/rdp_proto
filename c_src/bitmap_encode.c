@@ -694,6 +694,8 @@ xrdp_bitmap_compress(char *in_data, int width, int height,
     mix_count = 0;
     fom_count = 0;
 
+    (void)out_count;
+
     if ((bpp == 15) || (bpp == 16))
     {
         mix = (bpp == 15) ? 0xba1f : 0xffff;
