@@ -90,3 +90,49 @@ compress(_Context, _Data) -> error(no_nif).
 -spec decompress(context(), iolist(), flags()) -> {ok, iolist()}.
 decompress(_Context, _Data, _Flags) -> error(no_nif).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+context_test() ->
+    F = fun() ->
+        {ok, _C} = new_context(compress)
+    end,
+    F(),
+    erlang:garbage_collect().
+
+level_test() ->
+    {ok, C} = new_context(compress),
+    ?assertMatch('8k', get_level(C)),
+    set_level(C, '64k'),
+    ?assertMatch('64k', get_level(C)).
+
+compress_test() ->
+    {ok, C} = new_context(compress),
+    Fun0 = fun() ->
+        {ok, D0, F0} = compress(C, <<"abcd">>),
+        erlang:garbage_collect(),
+        ?assertMatch([flushed], lists:sort(F0)),
+        ?assertMatch(<<"abcd">>, iolist_to_binary(D0))
+    end,
+    Fun0(),
+    Fun1 = fun() ->
+        {ok, D1, F1} = compress(C, <<"abcdabcdabcdabcdabcd">>),
+        ?assertMatch([at_front,compressed,flushed], lists:sort(F1)),
+        ?assertMatch(10, iolist_size(D1))
+    end,
+    Fun1(),
+    Fun2 = fun() ->
+        {ok, D2, F2} = compress(C, <<"xyzxyzxyzxyzxyzxyzxyzxyzxyz">>),
+        ?assertMatch([compressed], lists:sort(F2)),
+        ?assertMatch(10, iolist_size(D2))
+    end,
+    Fun2(),
+    Fun3 = fun() ->
+        {ok, D3, F3} = compress(C, <<"xyzxyzxyzxyzxyzxyzxyzxyzxyz">>),
+        ?assertMatch([compressed], lists:sort(F3)),
+        ?assertMatch(4, iolist_size(D3))
+    end,
+    Fun3(),
+    erlang:garbage_collect().
+
+-endif.

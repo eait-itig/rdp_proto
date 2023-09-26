@@ -44,11 +44,14 @@ static ErlNifResourceType *mppc_ctx_rsrc;
 struct mppc_ctx {
 	ErlNifMutex		*mc_lock;
 	MPPC_CONTEXT		*mc_ctx;
+	struct mppc_data	*mc_datas;
 	uint32_t		 mc_level;
 };
 
 struct mppc_data {
 	struct mppc_ctx		*md_ctx;
+	struct mppc_data	*md_next;
+	struct mppc_data	*md_prev;
 	uint8_t			*md_data;
 };
 
@@ -57,6 +60,7 @@ mppc_ctx_dtor(ErlNifEnv *env, void *arg)
 {
 	struct mppc_ctx *ctx = arg;
 	enif_mutex_lock(ctx->mc_lock);
+	assert(ctx->mc_datas == NULL);
 	mppc_context_free(ctx->mc_ctx);
 	enif_mutex_unlock(ctx->mc_lock);
 	enif_mutex_destroy(ctx->mc_lock);
@@ -66,11 +70,18 @@ static void
 mppc_data_dtor(ErlNifEnv *env, void *arg)
 {
 	struct mppc_data *md = arg;
-	enif_mutex_lock(md->md_ctx->mc_lock);
+	struct mppc_ctx *mc = md->md_ctx;
+	enif_mutex_lock(mc->mc_lock);
+	if (md->md_prev == NULL)
+		mc->mc_datas = md->md_next;
+	else
+		md->md_prev->md_next = md->md_next;
+	if (md->md_next != NULL)
+		md->md_next->md_prev = md->md_prev;
 	free(md->md_data);
 	md->md_data = NULL;
-	enif_mutex_unlock(md->md_ctx->mc_lock);
-	enif_release_resource(md->md_ctx);
+	enif_mutex_unlock(mc->mc_lock);
+	enif_release_resource(mc);
 }
 
 static ERL_NIF_TERM
@@ -215,6 +226,12 @@ mppcnif_compress(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 	bzero(md, sizeof (*md));
 	md->md_ctx = mc;
 	md->md_data = buf;
+
+	if (mc->mc_datas != NULL)
+		mc->mc_datas->md_prev = md;
+	md->md_next = mc->mc_datas;
+	mc->mc_datas = md;
+
 	enif_keep_resource(mc);
 
 	enif_mutex_unlock(mc->mc_lock);
