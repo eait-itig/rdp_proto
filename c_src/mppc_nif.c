@@ -38,21 +38,14 @@
 #include "erl_nif.h"
 #include "mppc.h"
 
-static ErlNifResourceType *mppc_data_rsrc;
 static ErlNifResourceType *mppc_ctx_rsrc;
 
 struct mppc_ctx {
 	ErlNifMutex		*mc_lock;
 	MPPC_CONTEXT		*mc_ctx;
-	struct mppc_data	*mc_datas;
 	uint32_t		 mc_level;
-};
-
-struct mppc_data {
-	struct mppc_ctx		*md_ctx;
-	struct mppc_data	*md_next;
-	struct mppc_data	*md_prev;
-	uint8_t			*md_data;
+	uint8_t			*mc_tbuf;
+	size_t			 mc_tsz;
 };
 
 static void
@@ -60,28 +53,14 @@ mppc_ctx_dtor(ErlNifEnv *env, void *arg)
 {
 	struct mppc_ctx *ctx = arg;
 	enif_mutex_lock(ctx->mc_lock);
-	assert(ctx->mc_datas == NULL);
 	mppc_context_free(ctx->mc_ctx);
+	ctx->mc_ctx = NULL;
+	free(ctx->mc_tbuf);
+	ctx->mc_tbuf = NULL;
+	ctx->mc_tsz = 0;
 	enif_mutex_unlock(ctx->mc_lock);
 	enif_mutex_destroy(ctx->mc_lock);
-}
-
-static void
-mppc_data_dtor(ErlNifEnv *env, void *arg)
-{
-	struct mppc_data *md = arg;
-	struct mppc_ctx *mc = md->md_ctx;
-	enif_mutex_lock(mc->mc_lock);
-	if (md->md_prev == NULL)
-		mc->mc_datas = md->md_next;
-	else
-		md->md_prev->md_next = md->md_next;
-	if (md->md_next != NULL)
-		md->md_next->md_prev = md->md_prev;
-	free(md->md_data);
-	md->md_data = NULL;
-	enif_mutex_unlock(mc->mc_lock);
-	enif_release_resource(mc);
+	ctx->mc_lock = NULL;
 }
 
 static ERL_NIF_TERM
@@ -110,6 +89,8 @@ mppcnif_new_context(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 	mc->mc_lock = enif_mutex_create("mppc_ctx");
 	mc->mc_level = 0;
 	mc->mc_ctx = mppc_context_new(0, compressor);
+	mc->mc_tsz = 8192;
+	mc->mc_tbuf = malloc(mc->mc_tsz);
 
 	rv = enif_make_resource(env, mc);
 	enif_release_resource(mc);
@@ -175,10 +156,8 @@ static ERL_NIF_TERM
 mppcnif_compress(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
 	struct mppc_ctx *mc;
-	struct mppc_data *md;
-	ErlNifBinary bin;
+	ErlNifBinary bin, outbin;
 	int rc;
-	uint8_t *buf;
 	const uint8_t *out;
 	uint32_t sz;
 	uint32_t flags;
@@ -193,53 +172,37 @@ mppcnif_compress(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 	if (bin.size < 1)
 		return (enif_make_badarg(env));
 
-	buf = malloc(bin.size);
-	assert(buf != NULL);
+	rc = enif_alloc_binary(bin.size, &outbin);
+	assert(rc);
 	sz = bin.size;
 
 	enif_mutex_lock(mc->mc_lock);
-	rc = mppc_compress(mc->mc_ctx, bin.data, bin.size, buf, &out, &sz,
-	    &flags);
+
+	while (mc->mc_tsz < sz) {
+		mc->mc_tsz *= 2;
+		free(mc->mc_tbuf);
+		mc->mc_tbuf = malloc(mc->mc_tsz);
+	}
+
+	rc = mppc_compress(mc->mc_ctx, bin.data, bin.size, mc->mc_tbuf, &out,
+	    &sz, &flags);
 
 	if (rc == -1) {
-		free(buf);
+		enif_release_binary(&outbin);
 		enif_mutex_unlock(mc->mc_lock);
 		return (enif_raise_exception(env,
 		    enif_make_atom(env, "mppc_compress_fail")));
 	}
 
-	/*
-	 * mppc_compress can return a reference to the input data, but "bin"
-	 * is transient and only exists for the duration of this NIF.
-	 *
-	 * If it does that, short-circuit and return the same term back to
-	 * Erlang to avoid unnecessary copying.
-	 */
-	if (out == bin.data && sz == bin.size) {
-		free(buf);
-		enif_mutex_unlock(mc->mc_lock);
-		rv = argv[1];
-		goto do_flags;
-	}
 
-	md = enif_alloc_resource(mppc_data_rsrc, sizeof (*md));
-	bzero(md, sizeof (*md));
-	md->md_ctx = mc;
-	md->md_data = buf;
-
-	if (mc->mc_datas != NULL)
-		mc->mc_datas->md_prev = md;
-	md->md_next = mc->mc_datas;
-	mc->mc_datas = md;
-
-	enif_keep_resource(mc);
+	bcopy(out, outbin.data, sz);
 
 	enif_mutex_unlock(mc->mc_lock);
 
-	rv = enif_make_resource_binary(env, md, out, sz);
-	enif_release_resource(md);
+	rv = enif_make_binary(env, &outbin);
+	if (sz != outbin.size)
+		rv = enif_make_sub_binary(env, rv, 0, sz);
 
-do_flags:
 	flaglist = enif_make_list(env, 0);
 	if (flags & PACKET_COMPRESSED)
 		flaglist = enif_make_list_cell(env,
@@ -293,9 +256,6 @@ load_cb(ErlNifEnv *env, void **priv_data, ERL_NIF_TERM load_info)
 {
 	mppc_ctx_rsrc = enif_open_resource_type(env, NULL, "mppc_ctx",
 	    mppc_ctx_dtor, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER,
-	    NULL);
-	mppc_data_rsrc = enif_open_resource_type(env, NULL, "mppc_data",
-	    mppc_data_dtor, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER,
 	    NULL);
 	return 0;
 }
