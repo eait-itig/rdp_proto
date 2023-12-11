@@ -199,9 +199,9 @@ mppcnif_compress(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 
 	enif_mutex_unlock(mc->mc_lock);
 
-	rv = enif_make_binary(env, &outbin);
 	if (sz != outbin.size)
-		rv = enif_make_sub_binary(env, rv, 0, sz);
+		enif_realloc_binary(&outbin, sz);
+	rv = enif_make_binary(env, &outbin);
 
 	flaglist = enif_make_list(env, 0);
 	if (flags & PACKET_COMPRESSED)
