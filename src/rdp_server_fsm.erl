@@ -656,6 +656,23 @@ rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = IoChan}},
             {stop, {bad_protocol, Other}, S}
     end;
 
+rdp_clientinfo({mcs_pdu, #mcs_cjr{user = Them, channel = Chan}},
+        S = #state{mcs = #mcs_state{them = Them, us = Us, iochan = IoChan}}) ->
+    % Some buggy clients seem to send a CJR for the iochan?
+    case Chan of
+        IoChan ->
+            lager:debug("~p sent CJR for io channel, responding ok (but this "
+                "is a spec violation)", [S#state.peer]),
+            ok = rdp_server:send({self(), S},
+                #mcs_cjc{user = Them, channel = Chan,
+                    status = 'rt-successful'}),
+            {next_state, rdp_clientinfo, S};
+        OtherChan ->
+            lager:debug("~p sent CJR for unknown channel ~B?? ignoring it",
+                [S#state.peer, Chan]),
+            {next_state, rdp_clientinfo, S}
+    end;
+
 rdp_clientinfo({mcs_pdu, Pdu = #mcs_data{user = Them, channel = Them}},
         S = #state{mcs = #mcs_state{them = Them}}) ->
     % just ignore any other RDP BASIC packets we get on the user channel
