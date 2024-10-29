@@ -29,6 +29,8 @@
 
 -module(fastpath).
 
+-feature(maybe_expr, disable).
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.

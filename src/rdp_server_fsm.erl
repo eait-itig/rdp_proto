@@ -28,6 +28,8 @@
 %%
 
 -module(rdp_server_fsm).
+-feature(maybe_expr, disable).
+
 -behaviour(gen_fsm).
 
 -compile([{parse_transform, lager_transform}]).

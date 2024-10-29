@@ -29,6 +29,8 @@
 
 -module(rdpp).
 
+-feature(maybe_expr, disable).
+
 -compile([{parse_transform, lager_transform}]).
 -compile([{parse_transform, bitset_parse_transform}]).
 
